@@ -1,76 +1,91 @@
--- Ghost Menu Script Hub - Complete (TEMP + PERMA keys)
--- Versão final: Login com keys temporárias (14 dias) e permanentes (sem expirar)
--- Inclui hub completo com abas e templates (pronto para editar)
--- OBS: writefile/readfile/isfile/setclipboard/StarterGui:SetCore dependem do executor (Synapse, KRNL, etc.)
+-- Ghost Menu Script Hub - Professional Version
 
+-- === SERVICES ===
 local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local StarterGui = game:GetService("StarterGui")
 local player = Players.LocalPlayer
 
-local mainColor = Color3.fromRGB(20, 20, 20)
-local accentColor = Color3.fromRGB(200, 0, 0)
-local sideColor = Color3.fromRGB(30, 30, 30)
-local navColor = Color3.fromRGB(35, 39, 42)
-local textColor = Color3.fromRGB(255,255,255)
-local subTextColor = Color3.fromRGB(180,180,180)
-
-local dragging, dragInput, dragStart, startPos
-
--- === SISTEMA DE KEYS ===
-local TEMP_KEYS = { -- duram 14 dias
-    "GHOST123",
-    "VIPKEY456",
-    "TESTE789",
-}
-local PERMA_KEYS = { -- nunca expiram
-    "PERMA123",
-    "VIPFOREVER",
+-- === COLORS ===
+local Colors = {
+    Main = Color3.fromRGB(20, 20, 20),
+    Accent = Color3.fromRGB(200, 0, 0),
+    Side = Color3.fromRGB(30, 30, 30),
+    Nav = Color3.fromRGB(35, 39, 42),
+    Text = Color3.fromRGB(255,255,255),
+    SubText = Color3.fromRGB(180,180,180),
 }
 
-local KEYFILE = "ghostmenu_key.txt" -- arquivo que o executor salva
+-- === UTILS ===
+local Util = {}
 
-local function writeKeyFile(content)
-    if writefile then
-        pcall(function() writefile(KEYFILE, tostring(content)) end)
+function Util:ClearChildren(frame)
+    for _,v in pairs(frame:GetChildren()) do
+        if not v:IsA("UIListLayout") then v:Destroy() end
     end
 end
 
-local function readKeyFile()
+function Util:CreateButton(parent, props)
+    local btn = Instance.new("TextButton")
+    btn.Text = props.Text or "Button"
+    btn.Size = props.Size or UDim2.new(0.7, 0, 0, 36)
+    btn.Position = props.Position or UDim2.new(0.15, 0, 0, 0)
+    btn.BackgroundColor3 = props.BgColor or Colors.Accent
+    btn.TextColor3 = props.TextColor or Colors.Text
+    btn.Font = Enum.Font.SourceSansBold
+    btn.TextSize = props.TextSize or 16
+    btn.BorderSizePixel = 0
+    btn.Parent = parent
+    return btn
+end
+
+function Util:Notify(title, text, duration)
+    pcall(function()
+        if StarterGui.SetCore then
+            StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = duration or 5})
+        end
+    end)
+end
+
+-- === AUTH MODULE ===
+local Auth = {}
+Auth.TempKeys = { "GHOST123", "VIPKEY456", "TESTE789" }
+Auth.PermKeys = { "PERMA123", "VIPFOREVER" }
+Auth.KeyFile = "ghostmenu_key.txt"
+
+function Auth:WriteKey(content)
+    if writefile then pcall(function() writefile(self.KeyFile, tostring(content)) end) end
+end
+
+function Auth:ReadKey()
     if isfile and readfile then
-        local ok, content = pcall(function() return readfile(KEYFILE) end)
+        local ok, content = pcall(function() return readfile(self.KeyFile) end)
         if ok then return content end
     end
     return nil
 end
 
-local function saveAccessTemp()
-    local expireTime = os.time() + (14 * 24 * 60 * 60)
-    writeKeyFile(tostring(expireTime))
+function Auth:SaveTemp()
+    local expire = os.time() + (14 * 24 * 60 * 60)
+    self:WriteKey(expire)
 end
 
-local function saveAccessPerma()
-    writeKeyFile("PERMANENT")
+function Auth:SavePerm()
+    self:WriteKey("PERMANENT")
 end
 
-local function hasAccess()
-    local content = readKeyFile()
+function Auth:HasAccess()
+    local content = self:ReadKey()
     if not content then return false, nil end
-    if content == "PERMANENT" then
-        return true, "PERMANENT"
-    end
-    local expireTime = tonumber(content)
-    if expireTime and os.time() < expireTime then
-        return true, expireTime
-    end
-    return false, expireTime
+    if content == "PERMANENT" then return true, "PERMANENT" end
+    local expire = tonumber(content)
+    if expire and os.time() < expire then return true, expire end
+    return false, expire
 end
 
-local function isValidKey(input)
-    for _,k in ipairs(TEMP_KEYS) do
-        if input == k then return "TEMP" end
-    end
-    for _,k in ipairs(PERMA_KEYS) do
-        if input == k then return "PERMA" end
-    end
+function Auth:IsValidKey(input)
+    for _,k in ipairs(self.TempKeys) do if input == k then return "TEMP" end end
+    for _,k in ipairs(self.PermKeys) do if input == k then return "PERMA" end end
     return nil
 end
 
@@ -124,238 +139,6 @@ end
 
 local tabs = getTabsForCurrentGame()
 
-local function makeButton(parent, text, posY, sizeX)
-    local btn = Instance.new("TextButton")
-    btn.Text = text
-    btn.Size = UDim2.new(sizeX or 0.7, 0, 0, 36)
-    btn.Position = UDim2.new(0.15, 0, 0, posY)
-    btn.BackgroundColor3 = accentColor
-    btn.TextColor3 = textColor
-    btn.Font = Enum.Font.SourceSansBold
-    btn.TextSize = 16
-    btn.BorderSizePixel = 0
-    btn.Parent = parent
-    return btn
-end
-
-local tabContents = {}
-
--- Credits
-tabContents.credits = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "Discord Server (click to copy)", y); y = y + 50
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard("https://discord.gg/ghostmenu") end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "Discord Server (click to copy)"
-    end)
-    local b2 = makeButton(mainArea, "If you need help DM SeuUser#0000", y); y = y + 50
-    local b3 = makeButton(mainArea, "Credit To Everyone", y); y = y + 50
-end
-
--- SEARCH
-tabContents.search = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local title = Instance.new("TextLabel", mainArea)
-    title.Text = "Pesquisar scripts (digite e pressione Enter)"
-    title.Size = UDim2.new(1, -40, 0, 24)
-    title.Position = UDim2.new(0, 20, 0, 20)
-    title.BackgroundTransparency = 1
-    title.TextColor3 = textColor
-    title.Font = Enum.Font.SourceSans
-    title.TextSize = 16
-    title.TextXAlignment = Enum.TextXAlignment.Left
-
-    local searchBox = Instance.new("TextBox", mainArea)
-    searchBox.PlaceholderText = "Buscar... ex: pet, esp, fly"
-    searchBox.Size = UDim2.new(0.6, 0, 0, 28)
-    searchBox.Position = UDim2.new(0, 20, 0, 50)
-    searchBox.BackgroundColor3 = navColor
-    searchBox.TextColor3 = textColor
-    searchBox.Font = Enum.Font.SourceSans
-    searchBox.TextSize = 14
-    searchBox.ClearTextOnFocus = false
-
-    local resultsFrame = Instance.new("Frame", mainArea)
-    resultsFrame.Size = UDim2.new(1, -40, 1, -120)
-    resultsFrame.Position = UDim2.new(0, 20, 0, 90)
-    resultsFrame.BackgroundTransparency = 1
-
-    local function populateResults(filter)
-        for _,c in pairs(resultsFrame:GetChildren()) do c:Destroy() end
-        local y = 0
-        filter = (filter or ""):lower()
-        local function addResult(name, code)
-            if filter == "" or string.find(name:lower(), filter) or string.find(code:lower(), filter) then
-                local btn = Instance.new("TextButton", resultsFrame)
-                btn.Text = name
-                btn.Size = UDim2.new(0.9,0,0,34)
-                btn.Position = UDim2.new(0.05,0,0, y)
-                btn.BackgroundColor3 = accentColor
-                btn.TextColor3 = textColor
-                btn.Font = Enum.Font.SourceSansBold
-                btn.TextSize = 14
-                btn.BorderSizePixel = 0
-                y = y + 40
-                btn.MouseButton1Click:Connect(function()
-                    if setclipboard then pcall(function() setclipboard(code) end) end
-                    btn.Text = "Copiado!"
-                    wait(1)
-                    btn.Text = name
-                end)
-            end
-        end
-
-        addResult("Fly (template)", templates.fly)
-        addResult("ESP (template)", templates.esp)
-        addResult("Aimlock (template)", templates.aimlock)
-        addResult("PetSimX - AutoClaim (template)", templates.petsimx_autoclaim)
-        addResult("PetSimX - AutoFarm (template)", templates.petsimx_autofarm)
-        addResult("Shindo Bossfarm (template)", templates.shindo_rboss)
-        addResult("KingLegacy OP (template)", templates.kinglegacy_ops)
-        addResult("VBA OP Tool (template)", templates.vbaop_tool)
-    end
-
-    populateResults("")
-    searchBox.FocusLost:Connect(function(enter)
-        if enter then populateResults(searchBox.Text or "") end
-    end)
-end
-
--- General
-tabContents.general = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do if not v:IsA("UIListLayout") then v:Destroy() end end
-
-    local b1 = makeButton(mainArea, "Fly (copiar template)")
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.fly) end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "Fly (copiar template)"
-    end)
-    local b2 = makeButton(mainArea, "ESP (copiar template)")
-    b2.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.esp) end) end
-        b2.Text = "Copied!"
-        wait(1)
-        b2.Text = "ESP (copiar template)"
-    end)
-    local b3 = makeButton(mainArea, "Aimlock (copiar template)")
-    b3.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.aimlock) end) end
-        b3.Text = "Copied!"
-        wait(1)
-        b3.Text = "Aimlock (copiar template)"
-    end)
-end
-
--- Bugs
-tabContents.bugs = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local label = Instance.new("TextLabel", mainArea)
-    label.Text = "Reporte de Bugs (isso só copia o reporte pro clipboard local para você postar no discord)"
-    label.Size = UDim2.new(1, -40, 0, 40)
-    label.Position = UDim2.new(0, 20, 0, 20)
-    label.BackgroundTransparency = 1
-    label.TextColor3 = textColor
-    label.Font = Enum.Font.SourceSans
-    label.TextSize = 14
-    label.TextWrapped = true
-
-    local txt = Instance.new("TextBox", mainArea)
-    txt.Size = UDim2.new(1, -40, 0, 120)
-    txt.Position = UDim2.new(0, 20, 0, 70)
-    txt.BackgroundColor3 = navColor
-    txt.TextColor3 = textColor
-    txt.Font = Enum.Font.SourceSans
-    txt.ClearTextOnFocus = false
-    txt.Text = "Descreva o bug, passos para reproduzir, jogo/servidor, prints (links) etc."
-
-    local sendBtn = Instance.new("TextButton", mainArea)
-    sendBtn.Text = "Copiar reporte (colar no Discord)"
-    sendBtn.Size = UDim2.new(0.6,0,0,36)
-    sendBtn.Position = UDim2.new(0.2,0,0,200)
-    sendBtn.BackgroundColor3 = accentColor
-    sendBtn.TextColor3 = textColor
-    sendBtn.Font = Enum.Font.SourceSansBold
-    sendBtn.MouseButton1Click:Connect(function()
-        local content = txt.Text or ""
-        if setclipboard then pcall(function() setclipboard(content) end) end
-        sendBtn.Text = "Copiado!"
-        wait(1)
-        sendBtn.Text = "Copiar reporte (colar no Discord)"
-    end)
-end
-
--- PetSimX
-tabContents.petsimx = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "AutoClaim (copiar template)", y); y = y + 50
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.petsimx_autoclaim) end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "AutoClaim (copiar template)"
-    end)
-    local b2 = makeButton(mainArea, "AutoFarm (copiar template)", y); y = y + 50
-    b2.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.petsimx_autofarm) end) end
-        b2.Text = "Copied!"
-        wait(1)
-        b2.Text = "AutoFarm (copiar template)"
-    end)
-end
-
--- VBA OP
-tabContents.vbaop = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "VBA OP Tool (copiar template)", y); y = y + 50
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.vbaop_tool) end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "VBA OP Tool (copiar template)"
-    end)
-    local info = Instance.new("TextLabel", mainArea)
-    info.Text = "Coloque aqui scripts específicos do servidor/versão quando quiser."
-    info.Size = UDim2.new(1, -40, 0, 40)
-    info.Position = UDim2.new(0, 20, 0, 120)
-    info.BackgroundTransparency = 1
-    info.TextColor3 = subTextColor
-    info.Font = Enum.Font.SourceSans
-    info.TextSize = 14
-end
-
--- Shindo
-tabContents.shindo = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "Shindo Bossfarm (copiar template)", y); y = y + 50
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.shindo_rboss) end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "Shindo Bossfarm (copiar template)"
-    end)
-end
-
--- King Legacy
-tabContents.kinglegacy = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "King Legacy OP (copiar template)", y); y = y + 50
-    b1.MouseButton1Click:Connect(function()
-        if setclipboard then pcall(function() setclipboard(templates.kinglegacy_ops) end) end
-        b1.Text = "Copied!"
-        wait(1)
-        b1.Text = "King Legacy OP (copiar template)"
-    end)
-end
-
 -- === FUNÇÃO ABRIR HUB ===
 local function abrirHub()
     local screenGui = Instance.new("ScreenGui")
@@ -366,13 +149,13 @@ local function abrirHub()
     local mainFrame = Instance.new("Frame", screenGui)
     mainFrame.Size = UDim2.new(0, 540, 0, 370)
     mainFrame.Position = UDim2.new(0.5, -270, 0.5, -185)
-    mainFrame.BackgroundColor3 = mainColor
+    mainFrame.BackgroundColor3 = Colors.Main
     mainFrame.BorderSizePixel = 0
     mainFrame.Active = true
 
     local topBar = Instance.new("Frame", mainFrame)
     topBar.Size = UDim2.new(1, 0, 0, 32)
-    topBar.BackgroundColor3 = accentColor
+    topBar.BackgroundColor3 = Colors.Accent
     topBar.BorderSizePixel = 0
 
     local title = Instance.new("TextLabel", topBar)
@@ -380,7 +163,7 @@ local function abrirHub()
     title.Size = UDim2.new(1, -80, 1, 0)
     title.Position = UDim2.new(0, 12, 0, 0)
     title.BackgroundTransparency = 1
-    title.TextColor3 = textColor
+    title.TextColor3 = Colors.Text
     title.Font = Enum.Font.SourceSansBold
     title.TextSize = 16
     title.TextXAlignment = Enum.TextXAlignment.Left
@@ -389,8 +172,8 @@ local function abrirHub()
     minBtn.Text = "_"
     minBtn.Size = UDim2.new(0, 32, 0, 32)
     minBtn.Position = UDim2.new(1, -64, 0, 0)
-    minBtn.BackgroundColor3 = accentColor
-    minBtn.TextColor3 = textColor
+    minBtn.BackgroundColor3 = Colors.Accent
+    minBtn.TextColor3 = Colors.Text
     minBtn.Font = Enum.Font.SourceSansBold
     minBtn.TextSize = 24
     minBtn.BorderSizePixel = 0
@@ -399,8 +182,8 @@ local function abrirHub()
     closeBtn.Text = "X"
     closeBtn.Size = UDim2.new(0, 32, 0, 32)
     closeBtn.Position = UDim2.new(1, -32, 0, 0)
-    closeBtn.BackgroundColor3 = accentColor
-    closeBtn.TextColor3 = textColor
+    closeBtn.BackgroundColor3 = Colors.Accent
+    closeBtn.TextColor3 = Colors.Text
     closeBtn.Font = Enum.Font.SourceSansBold
     closeBtn.TextSize = 20
     closeBtn.BorderSizePixel = 0
@@ -408,13 +191,13 @@ local function abrirHub()
     local avatarBar = Instance.new("Frame", mainFrame)
     avatarBar.Size = UDim2.new(0, 60, 1, -32)
     avatarBar.Position = UDim2.new(0, 0, 0, 32)
-    avatarBar.BackgroundColor3 = sideColor
+    avatarBar.BackgroundColor3 = Colors.Side
     avatarBar.BorderSizePixel = 0
 
     local avatarCircle = Instance.new("Frame", avatarBar)
     avatarCircle.Size = UDim2.new(0, 40, 0, 40)
     avatarCircle.Position = UDim2.new(0.5, -20, 0, 16)
-    avatarCircle.BackgroundColor3 = accentColor
+    avatarCircle.BackgroundColor3 = Colors.Accent
     avatarCircle.BorderSizePixel = 0
     avatarCircle.ClipsDescendants = true
     local uicorner = Instance.new("UICorner", avatarCircle)
@@ -424,14 +207,14 @@ local function abrirHub()
     avatarLetter.Text = string.sub(player.Name,1,1):upper()
     avatarLetter.Size = UDim2.new(1, 0, 1, 0)
     avatarLetter.BackgroundTransparency = 1
-    avatarLetter.TextColor3 = textColor
+    avatarLetter.TextColor3 = Colors.Text
     avatarLetter.Font = Enum.Font.SourceSansBold
     avatarLetter.TextSize = 24
 
     local navCol = Instance.new("Frame", mainFrame)
     navCol.Size = UDim2.new(0, 160, 1, -32)
     navCol.Position = UDim2.new(0, 60, 0, 32)
-    navCol.BackgroundColor3 = navColor
+    navCol.BackgroundColor3 = Colors.Nav
     navCol.BorderSizePixel = 0
 
     local authLabel = Instance.new("TextLabel", navCol)
@@ -439,7 +222,7 @@ local function abrirHub()
     authLabel.Size = UDim2.new(1, 0, 0, 28)
     authLabel.Position = UDim2.new(0, 0, 0, 10)
     authLabel.BackgroundTransparency = 1
-    authLabel.TextColor3 = subTextColor
+    authLabel.TextColor3 = Colors.SubText
     authLabel.Font = Enum.Font.SourceSansBold
     authLabel.TextSize = 15
     authLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -451,7 +234,7 @@ local function abrirHub()
     navBar.BorderSizePixel = 0
     navBar.CanvasSize = UDim2.new(0, 0, 0, 400)
     navBar.ScrollBarThickness = 6
-    navBar.ScrollBarImageColor3 = accentColor
+    navBar.ScrollBarImageColor3 = Colors.Accent
 
     local navLayout = Instance.new("UIListLayout", navBar)
     navLayout.SortOrder = Enum.SortOrder.LayoutOrder
@@ -464,7 +247,7 @@ local function abrirHub()
     mainArea.Name = "MainArea"
     mainArea.CanvasSize = UDim2.new(0, 0, 0, 600) -- ajuste conforme necessário
     mainArea.ScrollBarThickness = 8
-    mainArea.ScrollBarImageColor3 = accentColor
+    mainArea.ScrollBarImageColor3 = Colors.Accent
     mainArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
 
     local layout = Instance.new("UIListLayout", mainArea)
@@ -474,7 +257,7 @@ local function abrirHub()
     local profileFrame = Instance.new("Frame", navCol)
     profileFrame.Size = UDim2.new(1, 0, 0, 48)
     profileFrame.Position = UDim2.new(0, 0, 1, -48)
-    profileFrame.BackgroundColor3 = sideColor
+    profileFrame.BackgroundColor3 = Colors.Side
     profileFrame.BorderSizePixel = 0
 
     local profileAvatar = Instance.new("ImageLabel", profileFrame)
@@ -490,7 +273,7 @@ local function abrirHub()
     profileName.Size = UDim2.new(1, -70, 0, 20)
     profileName.Position = UDim2.new(0, 44, 0, 8)
     profileName.BackgroundTransparency = 1
-    profileName.TextColor3 = textColor
+    profileName.TextColor3 = Colors.Text
     profileName.Font = Enum.Font.SourceSansBold
     profileName.TextSize = 14
     profileName.TextXAlignment = Enum.TextXAlignment.Left
@@ -500,7 +283,7 @@ local function abrirHub()
     profileTag.Size = UDim2.new(1, -70, 0, 16)
     profileTag.Position = UDim2.new(0, 44, 0, 24)
     profileTag.BackgroundTransparency = 1
-    profileTag.TextColor3 = subTextColor
+    profileTag.TextColor3 = Colors.SubText
     profileTag.Font = Enum.Font.SourceSans
     profileTag.TextSize = 12
     profileTag.TextXAlignment = Enum.TextXAlignment.Left
@@ -510,11 +293,11 @@ local function abrirHub()
     gear.Position = UDim2.new(1, -26, 0, 15)
     gear.BackgroundTransparency = 1
     gear.Image = "rbxassetid://6031068438"
-    gear.ImageColor3 = subTextColor
+    gear.ImageColor3 = Colors.SubText
 
     -- validade no rodapé (se houver)
     do
-        local access, expire = hasAccess()
+        local access, expire = Auth:HasAccess()
         if access then
             local expireLabel = Instance.new("TextLabel", profileFrame)
             if expire == "PERMANENT" then
@@ -525,7 +308,7 @@ local function abrirHub()
             expireLabel.Size = UDim2.new(1, -10, 0, 14)
             expireLabel.Position = UDim2.new(0, 5, 1, -14)
             expireLabel.BackgroundTransparency = 1
-            expireLabel.TextColor3 = subTextColor
+            expireLabel.TextColor3 = Colors.SubText
             expireLabel.Font = Enum.Font.SourceSans
             expireLabel.TextSize = 12
             expireLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -536,11 +319,11 @@ local function abrirHub()
         for _,btn in pairs(navBar:GetChildren()) do
             if btn:IsA("TextButton") then
                 if btn.Name == tabContent then
-                    btn.BackgroundColor3 = accentColor
-                    btn.TextColor3 = textColor
+                    btn.BackgroundColor3 = Colors.Accent
+                    btn.TextColor3 = Colors.Text
                 else
-                    btn.BackgroundColor3 = navColor
-                    btn.TextColor3 = subTextColor
+                    btn.BackgroundColor3 = Colors.Nav
+                    btn.TextColor3 = Colors.SubText
                 end
             end
         end
@@ -553,7 +336,7 @@ local function abrirHub()
             label.Size = UDim2.new(1, -40, 0, 40)
             label.Position = UDim2.new(0, 20, 0, 40)
             label.BackgroundTransparency = 1
-            label.TextColor3 = textColor
+            label.TextColor3 = Colors.Text
             label.Font = Enum.Font.SourceSans
             label.TextSize = 16
             label.TextWrapped = true
@@ -565,8 +348,8 @@ local function abrirHub()
         btn.Name = tab.Content -- agora usa o Content como identificador
         btn.Text = "# " .. tab.Name
         btn.Size = UDim2.new(1, 0, 0, 36)
-        btn.BackgroundColor3 = navColor
-        btn.TextColor3 = subTextColor
+        btn.BackgroundColor3 = Colors.Nav
+        btn.TextColor3 = Colors.SubText
         btn.Font = Enum.Font.SourceSansBold
         btn.TextSize = 16
         btn.BorderSizePixel = 0
@@ -629,13 +412,13 @@ local function criarLoginDiscordStyle()
     local mainFrame = Instance.new("Frame", screenGui)
     mainFrame.Size = UDim2.new(0, 540, 0, 370)
     mainFrame.Position = UDim2.new(0.5, -270, 0.5, -185)
-    mainFrame.BackgroundColor3 = mainColor
+    mainFrame.BackgroundColor3 = Colors.Main
     mainFrame.BorderSizePixel = 0
     mainFrame.Active = true
 
     local topBar = Instance.new("Frame", mainFrame)
     topBar.Size = UDim2.new(1, 0, 0, 32)
-    topBar.BackgroundColor3 = accentColor
+    topBar.BackgroundColor3 = Colors.Accent
     topBar.BorderSizePixel = 0
 
     local title = Instance.new("TextLabel", topBar)
@@ -643,7 +426,7 @@ local function criarLoginDiscordStyle()
     title.Size = UDim2.new(1, -80, 1, 0)
     title.Position = UDim2.new(0, 12, 0, 0)
     title.BackgroundTransparency = 1
-    title.TextColor3 = textColor
+    title.TextColor3 = Colors.Text
     title.Font = Enum.Font.SourceSansBold
     title.TextSize = 16
     title.TextXAlignment = Enum.TextXAlignment.Left
@@ -651,13 +434,13 @@ local function criarLoginDiscordStyle()
     local avatarBar = Instance.new("Frame", mainFrame)
     avatarBar.Size = UDim2.new(0, 60, 1, -32)
     avatarBar.Position = UDim2.new(0, 0, 0, 32)
-    avatarBar.BackgroundColor3 = sideColor
+    avatarBar.BackgroundColor3 = Colors.Side
     avatarBar.BorderSizePixel = 0
 
     local avatarCircle = Instance.new("Frame", avatarBar)
     avatarCircle.Size = UDim2.new(0, 40, 0, 40)
     avatarCircle.Position = UDim2.new(0.5, -20, 0, 16)
-    avatarCircle.BackgroundColor3 = accentColor
+    avatarCircle.BackgroundColor3 = Colors.Accent
     avatarCircle.BorderSizePixel = 0
     avatarCircle.ClipsDescendants = true
     local uicorner = Instance.new("UICorner", avatarCircle)
@@ -667,14 +450,14 @@ local function criarLoginDiscordStyle()
     avatarLetter.Text = string.sub(player.Name,1,1):upper()
     avatarLetter.Size = UDim2.new(1, 0, 1, 0)
     avatarLetter.BackgroundTransparency = 1
-    avatarLetter.TextColor3 = textColor
+    avatarLetter.TextColor3 = Colors.Text
     avatarLetter.Font = Enum.Font.SourceSansBold
     avatarLetter.TextSize = 24
 
     local navCol = Instance.new("Frame", mainFrame)
     navCol.Size = UDim2.new(0, 160, 1, -32)
     navCol.Position = UDim2.new(0, 60, 0, 32)
-    navCol.BackgroundColor3 = navColor
+    navCol.BackgroundColor3 = Colors.Nav
     navCol.BorderSizePixel = 0
 
     local authLabel = Instance.new("TextLabel", navCol)
@@ -682,7 +465,7 @@ local function criarLoginDiscordStyle()
     authLabel.Size = UDim2.new(1, 0, 0, 28)
     authLabel.Position = UDim2.new(0, 0, 0, 10)
     authLabel.BackgroundTransparency = 1
-    authLabel.TextColor3 = subTextColor
+    authLabel.TextColor3 = Colors.SubText
     authLabel.Font = Enum.Font.SourceSansBold
     authLabel.TextSize = 15
     authLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -692,7 +475,7 @@ local function criarLoginDiscordStyle()
     loginLabel.Size = UDim2.new(1, -18, 0, 28)
     loginLabel.Position = UDim2.new(0, 10, 0, 38)
     loginLabel.BackgroundTransparency = 1
-    loginLabel.TextColor3 = textColor
+    loginLabel.TextColor3 = Colors.Text
     loginLabel.Font = Enum.Font.SourceSansBold
     loginLabel.TextSize = 17
     loginLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -702,7 +485,7 @@ local function criarLoginDiscordStyle()
     helpLabel.Size = UDim2.new(1, -18, 0, 28)
     helpLabel.Position = UDim2.new(0, 10, 0, 66)
     helpLabel.BackgroundTransparency = 1
-    helpLabel.TextColor3 = subTextColor
+    helpLabel.TextColor3 = Colors.SubText
     helpLabel.Font = Enum.Font.SourceSans
     helpLabel.TextSize = 17
     helpLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -712,7 +495,7 @@ local function criarLoginDiscordStyle()
     local profileFrame = Instance.new("Frame", navCol)
     profileFrame.Size = UDim2.new(1, 0, 0, 48)
     profileFrame.Position = UDim2.new(0, 0, 1, -48)
-    profileFrame.BackgroundColor3 = sideColor
+    profileFrame.BackgroundColor3 = Colors.Side
     profileFrame.BorderSizePixel = 0
 
     local profileAvatar = Instance.new("ImageLabel", profileFrame)
@@ -728,7 +511,7 @@ local function criarLoginDiscordStyle()
     profileName.Size = UDim2.new(1, -70, 0, 20)
     profileName.Position = UDim2.new(0, 44, 0, 8)
     profileName.BackgroundTransparency = 1
-    profileName.TextColor3 = textColor
+    profileName.TextColor3 = Colors.Text
     profileName.Font = Enum.Font.SourceSansBold
     profileName.TextSize = 14
     profileName.TextXAlignment = Enum.TextXAlignment.Left
@@ -738,7 +521,7 @@ local function criarLoginDiscordStyle()
     profileTag.Size = UDim2.new(1, -70, 0, 16)
     profileTag.Position = UDim2.new(0, 44, 0, 24)
     profileTag.BackgroundTransparency = 1
-    profileTag.TextColor3 = subTextColor
+    profileTag.TextColor3 = Colors.SubText
     profileTag.Font = Enum.Font.SourceSans
     profileTag.TextSize = 12
     profileTag.TextXAlignment = Enum.TextXAlignment.Left
@@ -754,7 +537,7 @@ local function criarLoginDiscordStyle()
     loginTitle.Size = UDim2.new(1, -32, 0, 32)
     loginTitle.Position = UDim2.new(0, 16, 0, 10)
     loginTitle.BackgroundTransparency = 1
-    loginTitle.TextColor3 = textColor
+    loginTitle.TextColor3 = Colors.Text
     loginTitle.Font = Enum.Font.SourceSansBold
     loginTitle.TextSize = 20
     loginTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -764,7 +547,7 @@ local function criarLoginDiscordStyle()
     enterKeyLabel.Size = UDim2.new(1, -32, 0, 20)
     enterKeyLabel.Position = UDim2.new(0, 16, 0, 48)
     enterKeyLabel.BackgroundTransparency = 1
-    enterKeyLabel.TextColor3 = subTextColor
+    enterKeyLabel.TextColor3 = Colors.SubText
     enterKeyLabel.Font = Enum.Font.SourceSans
     enterKeyLabel.TextSize = 15
     enterKeyLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -773,8 +556,8 @@ local function criarLoginDiscordStyle()
     keyBox.PlaceholderText = "Type key here! Press Enter"
     keyBox.Size = UDim2.new(1, -32, 0, 32)
     keyBox.Position = UDim2.new(0, 16, 0, 70)
-    keyBox.BackgroundColor3 = navColor
-    keyBox.TextColor3 = textColor
+    keyBox.BackgroundColor3 = Colors.Nav
+    keyBox.TextColor3 = Colors.Text
     keyBox.Font = Enum.Font.SourceSans
     keyBox.TextSize = 15
     keyBox.ClearTextOnFocus = false
@@ -784,8 +567,8 @@ local function criarLoginDiscordStyle()
     tryKey.Text = "Try Key"
     tryKey.Size = UDim2.new(1, -32, 0, 32)
     tryKey.Position = UDim2.new(0, 16, 0, 110)
-    tryKey.BackgroundColor3 = accentColor
-    tryKey.TextColor3 = textColor
+    tryKey.BackgroundColor3 = Colors.Accent
+    tryKey.TextColor3 = Colors.Text
     tryKey.Font = Enum.Font.SourceSansBold
     tryKey.TextSize = 16
     tryKey.BorderSizePixel = 0
@@ -795,7 +578,7 @@ local function criarLoginDiscordStyle()
     othersLabel.Size = UDim2.new(1, -32, 0, 18)
     othersLabel.Position = UDim2.new(0, 16, 0, 150)
     othersLabel.BackgroundTransparency = 1
-    othersLabel.TextColor3 = subTextColor
+    othersLabel.TextColor3 = Colors.SubText
     othersLabel.Font = Enum.Font.SourceSans
     othersLabel.TextSize = 14
     othersLabel.TextXAlignment = Enum.TextXAlignment.Left
@@ -804,8 +587,8 @@ local function criarLoginDiscordStyle()
     discordBtn.Text = "Join Discord Server"
     discordBtn.Size = UDim2.new(1, -32, 0, 32)
     discordBtn.Position = UDim2.new(0, 16, 0, 172)
-    discordBtn.BackgroundColor3 = accentColor
-    discordBtn.TextColor3 = textColor
+    discordBtn.BackgroundColor3 = Colors.Accent
+    discordBtn.TextColor3 = Colors.Text
     discordBtn.Font = Enum.Font.SourceSansBold
     discordBtn.TextSize = 16
     discordBtn.BorderSizePixel = 0
@@ -814,8 +597,8 @@ local function criarLoginDiscordStyle()
     freeKeyBtn.Text = "Get Free Key"
     freeKeyBtn.Size = UDim2.new(1, -32, 0, 32)
     freeKeyBtn.Position = UDim2.new(0, 16, 0, 212)
-    freeKeyBtn.BackgroundColor3 = accentColor
-    freeKeyBtn.TextColor3 = textColor
+    freeKeyBtn.BackgroundColor3 = Colors.Accent
+    freeKeyBtn.TextColor3 = Colors.Text
     freeKeyBtn.Font = Enum.Font.SourceSansBold
     freeKeyBtn.TextSize = 16
     freeKeyBtn.BorderSizePixel = 0
@@ -824,21 +607,21 @@ local function criarLoginDiscordStyle()
     permKeyBtn.Text = "Purchase Permanent Key"
     permKeyBtn.Size = UDim2.new(1, -32, 0, 32)
     permKeyBtn.Position = UDim2.new(0, 16, 0, 252)
-    permKeyBtn.BackgroundColor3 = accentColor
-    permKeyBtn.TextColor3 = textColor
+    permKeyBtn.BackgroundColor3 = Colors.Accent
+    permKeyBtn.TextColor3 = Colors.Text
     permKeyBtn.Font = Enum.Font.SourceSansBold
     permKeyBtn.TextSize = 16
     permKeyBtn.BorderSizePixel = 0
 
     tryKey.MouseButton1Click:Connect(function()
         local input = keyBox.Text or ""
-        local res = isValidKey(input)
+        local res = Auth:IsValidKey(input)
         if res == "TEMP" then
-            saveAccessTemp()
+            Auth:SaveTemp()
             screenGui:Destroy()
             abrirHub()
         elseif res == "PERMA" then
-            saveAccessPerma()
+            Auth:SavePerm()
             screenGui:Destroy()
             abrirHub()
         else
@@ -846,7 +629,7 @@ local function criarLoginDiscordStyle()
             tryKey.BackgroundColor3 = Color3.fromRGB(120, 0, 0)
             wait(1.5)
             tryKey.Text = "Try Key"
-            tryKey.BackgroundColor3 = accentColor
+            tryKey.BackgroundColor3 = Colors.Accent
         end
     end)
 
@@ -897,7 +680,7 @@ local function criarLoginDiscordStyle()
 end
 
 -- === INICIALIZAÇÃO ===
-local access, expire = hasAccess()
+local access, expire = Auth:HasAccess()
 if access then
     abrirHub()
     -- notificação

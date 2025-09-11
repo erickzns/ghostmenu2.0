@@ -226,23 +226,23 @@ end
 
 -- General
 tabContents.general = function(mainArea)
-    for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
-    local y = 40
-    local b1 = makeButton(mainArea, "Fly (copiar template)", y); y = y + 50
+    for _,v in pairs(mainArea:GetChildren()) do if not v:IsA("UIListLayout") then v:Destroy() end end
+
+    local b1 = makeButton(mainArea, "Fly (copiar template)")
     b1.MouseButton1Click:Connect(function()
         if setclipboard then pcall(function() setclipboard(templates.fly) end) end
         b1.Text = "Copied!"
         wait(1)
         b1.Text = "Fly (copiar template)"
     end)
-    local b2 = makeButton(mainArea, "ESP (copiar template)", y); y = y + 50
+    local b2 = makeButton(mainArea, "ESP (copiar template)")
     b2.MouseButton1Click:Connect(function()
         if setclipboard then pcall(function() setclipboard(templates.esp) end) end
         b2.Text = "Copied!"
         wait(1)
         b2.Text = "ESP (copiar template)"
     end)
-    local b3 = makeButton(mainArea, "Aimlock (copiar template)", y); y = y + 50
+    local b3 = makeButton(mainArea, "Aimlock (copiar template)")
     b3.MouseButton1Click:Connect(function()
         if setclipboard then pcall(function() setclipboard(templates.aimlock) end) end
         b3.Text = "Copied!"
@@ -457,11 +457,19 @@ local function abrirHub()
     navLayout.SortOrder = Enum.SortOrder.LayoutOrder
     navLayout.Padding = UDim.new(0, 2)
 
-    local mainArea = Instance.new("Frame", mainFrame)
+    local mainArea = Instance.new("ScrollingFrame", mainFrame)
     mainArea.Size = UDim2.new(1, -220, 1, -32)
     mainArea.Position = UDim2.new(0, 220, 0, 32)
     mainArea.BackgroundTransparency = 1
     mainArea.Name = "MainArea"
+    mainArea.CanvasSize = UDim2.new(0, 0, 0, 600) -- ajuste conforme necessário
+    mainArea.ScrollBarThickness = 8
+    mainArea.ScrollBarImageColor3 = accentColor
+    mainArea.AutomaticCanvasSize = Enum.AutomaticSize.Y
+
+    local layout = Instance.new("UIListLayout", mainArea)
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding = UDim.new(0, 8)
 
     local profileFrame = Instance.new("Frame", navCol)
     profileFrame.Size = UDim2.new(1, 0, 0, 48)

@@ -377,6 +377,10 @@ local function abrirHub()
         screenGui:Destroy()
     end)
 
+    -- Variáveis de arrastar locais para evitar bugs
+    local dragging = false
+    local dragStart, startPos, dragInput
+
     topBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -653,6 +657,10 @@ local function criarLoginDiscordStyle()
         wait(1)
         permKeyBtn.Text = "Purchase Permanent Key"
     end)
+
+    -- Variáveis de arrastar locais para evitar bugs
+    local dragging = false
+    local dragStart, startPos, dragInput
 
     topBar.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then

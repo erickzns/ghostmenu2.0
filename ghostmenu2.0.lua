@@ -86,16 +86,43 @@ local templates = {
     vbaop_tool = "-- TEMPLATE: VBA OP helper\\nprint('VBA OP')",
 }
 
-local tabs = {
+-- TABELA DE JOGOS E SUAS ABAS ESPECÍFICAS
+local gameTabs = {
+    [6284583030] = { -- Pet Simulator X
+        {Name = "Pet Sim X", Content = "petsimx"},
+    },
+    [4520749081] = { -- Shindo Life
+        {Name = "Shindo Life", Content = "shindo"},
+    },
+    [3475397644] = { -- King Legacy
+        {Name = "KING LEGACY", Content = "kinglegacy"},
+    },
+    [9431156611] = { -- VBA OP (exemplo)
+        {Name = "VBA OP", Content = "vbaop"},
+    },
+    -- Adicione outros jogos aqui
+}
+
+-- Abas gerais SEMPRE visíveis
+local baseTabs = {
     {Name = "Credits", Content = "credits"},
     {Name = "SEARCH Scripts", Content = "search"},
     {Name = "General Use Scripts", Content = "general"},
     {Name = "Bug Reports", Content = "bugs"},
-    {Name = "Pet Sim X", Content = "petsimx"},
-    {Name = "VBA OP", Content = "vbaop"},
-    {Name = "Shindo Life", Content = "shindo"},
-    {Name = "KING LEGACY", Content = "kinglegacy"},
 }
+
+-- Função para montar as abas de acordo com o jogo
+local function getTabsForCurrentGame()
+    local tabs = {}
+    for _,tab in ipairs(baseTabs) do table.insert(tabs, tab) end
+    local specific = gameTabs[game.PlaceId]
+    if specific then
+        for _,tab in ipairs(specific) do table.insert(tabs, tab) end
+    end
+    return tabs
+end
+
+local tabs = getTabsForCurrentGame()
 
 local function makeButton(parent, text, posY, sizeX)
     local btn = Instance.new("TextButton")

@@ -524,10 +524,10 @@ local function abrirHub()
         end
     end
 
-    local function selectTab(tabName)
+    local function selectTab(tabContent)
         for _,btn in pairs(navBar:GetChildren()) do
             if btn:IsA("TextButton") then
-                if btn.Name == tabName then
+                if btn.Name == tabContent then
                     btn.BackgroundColor3 = accentColor
                     btn.TextColor3 = textColor
                 else
@@ -536,12 +536,12 @@ local function abrirHub()
                 end
             end
         end
-        if tabContents[tabName:lower():gsub(" ","")] then
-            tabContents[tabName:lower():gsub(" ","")](mainArea)
+        if tabContents[tabContent] then
+            tabContents[tabContent](mainArea)
         else
             for _,v in pairs(mainArea:GetChildren()) do v:Destroy() end
             local label = Instance.new("TextLabel", mainArea)
-            label.Text = "Conteúdo da aba: "..tabName
+            label.Text = "Conteúdo da aba: "..tabContent
             label.Size = UDim2.new(1, -40, 0, 40)
             label.Position = UDim2.new(0, 20, 0, 40)
             label.BackgroundTransparency = 1
@@ -554,7 +554,7 @@ local function abrirHub()
 
     for _,tab in ipairs(tabs) do
         local btn = Instance.new("TextButton", navBar)
-        btn.Name = tab.Name
+        btn.Name = tab.Content -- agora usa o Content como identificador
         btn.Text = "# " .. tab.Name
         btn.Size = UDim2.new(1, 0, 0, 36)
         btn.BackgroundColor3 = navColor
@@ -564,11 +564,11 @@ local function abrirHub()
         btn.BorderSizePixel = 0
         btn.TextXAlignment = Enum.TextXAlignment.Left
         btn.MouseButton1Click:Connect(function()
-            selectTab(tab.Name)
+            selectTab(tab.Content)
         end)
     end
 
-    selectTab(tabs[1].Name)
+    selectTab(tabs[1].Content)
 
     local minimized = false
     minBtn.MouseButton1Click:Connect(function()

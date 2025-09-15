@@ -1543,8 +1543,18 @@ yS = yS + 28
 -- Teleportar até o player selecionado
 local function teleportToPlayer(state)
     if state and selectedPlayer then
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local Players = game:GetService("Players")
         local LocalPlayer = Players.LocalPlayer
+        local remoteNames = {"TeleportToPlayer", "TeleportEvent", "TPEvent", "Teleport", "TPToPlayer"}
+        for _, remoteName in ipairs(remoteNames) do
+            local remote = ReplicatedStorage:FindFirstChild(remoteName)
+            if remote and remote:IsA("RemoteEvent") then
+                remote:FireServer(selectedPlayer)
+                return
+            end
+        end
+        -- Fallback local
         local target = Players:FindFirstChild(selectedPlayer)
         if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(2,0,0)
@@ -1557,8 +1567,18 @@ yS = yS + 28
 -- Trazer o player selecionado até você
 local function bringPlayerToMe(state)
     if state and selectedPlayer then
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local Players = game:GetService("Players")
         local LocalPlayer = Players.LocalPlayer
+        local remoteNames = {"BringPlayer", "BringEvent", "BringToMe", "Bring", "TPHereEvent"}
+        for _, remoteName in ipairs(remoteNames) do
+            local remote = ReplicatedStorage:FindFirstChild(remoteName)
+            if remote and remote:IsA("RemoteEvent") then
+                remote:FireServer(selectedPlayer)
+                return
+            end
+        end
+        -- Fallback local
         local target = Players:FindFirstChild(selectedPlayer)
         if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             target.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(2,0,0)
@@ -1647,7 +1667,17 @@ yS = yS + 32
 local frozenPlayers = {}
 local function freezeSelectedPlayer(state)
     if not selectedPlayer then return end
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
+    local remoteNames = {"FreezePlayer", "FreezeEvent", "Freeze", "AnchorPlayer", "AnchorEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(selectedPlayer, state)
+            return
+        end
+    end
+    -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
     if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
         if state then
@@ -1689,7 +1719,17 @@ yS = yS + 28
 -- Função: Matar Player
 local function killSelectedPlayer()
     if not selectedPlayer then return end
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
+    local remoteNames = {"KillPlayer", "KillEvent", "Kill", "EliminatePlayer", "EliminateEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(selectedPlayer)
+            return
+        end
+    end
+    -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
     if target and target.Character and target.Character:FindFirstChild("Humanoid") then
         target.Character.Humanoid.Health = 0
@@ -1705,7 +1745,17 @@ yS = yS + 28
 local jailedPlayers = {}
 local function jailSelectedPlayer(state)
     if not selectedPlayer then return end
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
+    local remoteNames = {"JailPlayer", "JailEvent", "Jail", "PrisonPlayer", "PrisonEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(selectedPlayer, state)
+            return
+        end
+    end
+    -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
     if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
         if state then

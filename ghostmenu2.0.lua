@@ -1411,9 +1411,100 @@ yS = yS + 28
 local smoothSlider, getSmoothValue = createSlider(settingsScroll, 0, yS, "Smooth", 1, 1, 10)
 yS = yS + 36
 
--- Distance
+
 local distSlider, getDistValue = createSlider(settingsScroll, 0, yS, "Distance", 1000, 100, 3000)
 yS = yS + 36
+
+-- Mini lista de jogadores
+local function getPlayersList()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local list = {}
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            table.insert(list, p.Name)
+        end
+    end
+    return list
+end
+local selectedPlayer = nil
+local function onPlayerSelect(idx, val)
+    selectedPlayer = val
+end
+local playerDropdown, getSelectedPlayer = createDropdown(settingsScroll, 0, yS, "Selecionar Player", getPlayersList(), 1, onPlayerSelect)
+yS = yS + 32
+
+-- Função: Congelar Player
+local function freezeSelectedPlayer()
+    if not selectedPlayer then return end
+    local Players = game:GetService("Players")
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+        target.Character.HumanoidRootPart.Anchored = true
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Congelar Player", false, function(state)
+    if state then freezeSelectedPlayer() end
+end)
+yS = yS + 28
+
+-- Função: Clonar Aparência
+local function cloneAppearance()
+    if not selectedPlayer then return end
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and LocalPlayer.Character then
+        for _, v in ipairs(LocalPlayer.Character:GetChildren()) do
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+                v:Destroy()
+            end
+        end
+        for _, v in ipairs(target.Character:GetChildren()) do
+            if v:IsA("Accessory") or v:IsA("Shirt") or v:IsA("Pants") or v:IsA("BodyColors") then
+                v:Clone().Parent = LocalPlayer.Character
+            end
+        end
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Clonar Aparência", false, function(state)
+    if state then cloneAppearance() end
+end)
+yS = yS + 28
+
+-- Função: Matar Player
+local function killSelectedPlayer()
+    if not selectedPlayer then return end
+    local Players = game:GetService("Players")
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("Humanoid") then
+        target.Character.Humanoid.Health = 0
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Matar Player", false, function(state)
+    if state then killSelectedPlayer() end
+end)
+yS = yS + 28
+
+-- Função: Prender Player
+local function jailSelectedPlayer()
+    if not selectedPlayer then return end
+    local Players = game:GetService("Players")
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+        local jail = Instance.new("Part")
+        jail.Size = Vector3.new(8, 12, 8)
+        jail.Position = target.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+        jail.Anchored = true
+        jail.CanCollide = true
+        jail.BrickColor = BrickColor.new("Bright red")
+        jail.Parent = workspace
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Prender Player", false, function(state)
+    if state then jailSelectedPlayer() end
+end)
+yS = yS + 28
 
 -- Draw FOV
 

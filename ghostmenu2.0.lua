@@ -1411,7 +1411,8 @@ local targetsDropdown, getTargetsOption = createDropdown(settingsScroll, 0, yS, 
 end)
 
 
--- Mini lista de armas detectadas automaticamente (agora abaixo do botão de dinheiro)
+
+-- Função para mini lista e botão de puxar arma no final do painel de Settings
 local function getWeaponsList()
     local containers = {
         game:GetService("ReplicatedStorage"),
@@ -1434,15 +1435,14 @@ local function getWeaponsList()
     return armas
 end
 
--- (depois do botão de dinheiro)
-local weaponDropdown, getSelectedWeapon, selectedWeapon, puxarArmaBtn
-do
+local function addWeaponSelector()
+    local weaponDropdown, getSelectedWeapon, selectedWeapon
     weaponDropdown, getSelectedWeapon = createDropdown(settingsScroll, 0, yS, "Selecionar Arma", getWeaponsList(), 1, function(idx, val)
         selectedWeapon = val
     end)
     yS = yS + 32
 
-    puxarArmaBtn = Instance.new("TextButton")
+    local puxarArmaBtn = Instance.new("TextButton")
     puxarArmaBtn.Parent = settingsScroll
     puxarArmaBtn.Position = UDim2.new(0, 0, 0, yS)
     puxarArmaBtn.Size = UDim2.new(0, 120, 0, 24)
@@ -1495,6 +1495,9 @@ do
     end)
     yS = yS + 32
 end
+
+-- Chamar função no final do painel de Settings (após botão de dinheiro)
+addWeaponSelector()
 
 -- Color picker para cor geral do ESP
 colorBoxESPGeral = createColorBox(settingsScroll, 0, yS, "ESP Color", Color3.fromRGB(255,255,255))

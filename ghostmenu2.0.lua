@@ -1515,6 +1515,59 @@ colorBox2 = createColorBox(settingsScroll, 0, yS, "Target Line", Color3.fromRGB(
 checkBox2 = createCheckbox(settingsScroll, 40, yS, "", false)
 yS = yS + 28
 
+-- Espectar Player (telar)
+local spectateConn = nil
+local function spectatePlayer(state)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Camera = workspace.CurrentCamera
+    if spectateConn then spectateConn:Disconnect() spectateConn = nil end
+    if state and selectedPlayer then
+        local function updateSpectate()
+            local target = Players:FindFirstChild(selectedPlayer)
+            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                Camera.CameraSubject = target.Character.HumanoidRootPart
+            end
+        end
+        updateSpectate()
+        spectateConn = game:GetService("RunService").RenderStepped:Connect(updateSpectate)
+    else
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("Humanoid") then
+            Camera.CameraSubject = LocalPlayer.Character.Humanoid
+        end
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Espectar Player", false, spectatePlayer)
+yS = yS + 28
+
+-- Teleportar até o player selecionado
+local function teleportToPlayer(state)
+    if state and selectedPlayer then
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local target = Players:FindFirstChild(selectedPlayer)
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            LocalPlayer.Character.HumanoidRootPart.CFrame = target.Character.HumanoidRootPart.CFrame + Vector3.new(2,0,0)
+        end
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Teleportar até Player", false, teleportToPlayer)
+yS = yS + 28
+
+-- Trazer o player selecionado até você
+local function bringPlayerToMe(state)
+    if state and selectedPlayer then
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local target = Players:FindFirstChild(selectedPlayer)
+        if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+            target.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame + Vector3.new(2,0,0)
+        end
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Trazer Player até mim", false, bringPlayerToMe)
+yS = yS + 28
+
 -- God Mode (Imortalidade)
 local godModeActive = false
 local godModeConn = nil
@@ -1590,17 +1643,23 @@ local playerDropdown, getSelectedPlayer = createDropdown(settingsScroll, 0, yS, 
 yS = yS + 32
 
 -- Função: Congelar Player
-local function freezeSelectedPlayer()
+
+local frozenPlayers = {}
+local function freezeSelectedPlayer(state)
     if not selectedPlayer then return end
     local Players = game:GetService("Players")
     local target = Players:FindFirstChild(selectedPlayer)
     if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-        target.Character.HumanoidRootPart.Anchored = true
+        if state then
+            target.Character.HumanoidRootPart.Anchored = true
+            frozenPlayers[selectedPlayer] = true
+        else
+            target.Character.HumanoidRootPart.Anchored = false
+            frozenPlayers[selectedPlayer] = nil
+        end
     end
 end
-createCheckbox(settingsScroll, 0, yS, "Congelar Player", false, function(state)
-    if state then freezeSelectedPlayer() end
-end)
+createCheckbox(settingsScroll, 0, yS, "Congelar Player", false, freezeSelectedPlayer)
 yS = yS + 28
 
 -- Função: Clonar Aparência
@@ -1642,23 +1701,31 @@ end)
 yS = yS + 28
 
 -- Função: Prender Player
-local function jailSelectedPlayer()
+
+local jailedPlayers = {}
+local function jailSelectedPlayer(state)
     if not selectedPlayer then return end
     local Players = game:GetService("Players")
     local target = Players:FindFirstChild(selectedPlayer)
     if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-        local jail = Instance.new("Part")
-        jail.Size = Vector3.new(8, 12, 8)
-        jail.Position = target.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
-        jail.Anchored = true
-        jail.CanCollide = true
-        jail.BrickColor = BrickColor.new("Bright red")
-        jail.Parent = workspace
+        if state then
+            local jail = Instance.new("Part")
+            jail.Size = Vector3.new(8, 12, 8)
+            jail.Position = target.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+            jail.Anchored = true
+            jail.CanCollide = true
+            jail.BrickColor = BrickColor.new("Bright red")
+            jail.Name = "_JAIL_BLOCK_" .. target.Name
+            jail.Parent = workspace
+            jailedPlayers[selectedPlayer] = jail
+        else
+            local jail = workspace:FindFirstChild("_JAIL_BLOCK_" .. target.Name)
+            if jail then jail:Destroy() end
+            jailedPlayers[selectedPlayer] = nil
+        end
     end
 end
-createCheckbox(settingsScroll, 0, yS, "Prender Player", false, function(state)
-    if state then jailSelectedPlayer() end
-end)
+createCheckbox(settingsScroll, 0, yS, "Prender Player", false, jailSelectedPlayer)
 yS = yS + 28
 
 -- Draw FOV

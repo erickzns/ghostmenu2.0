@@ -1282,41 +1282,37 @@ local function enableNoclip()
     local LocalPlayer = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    -- Invisibilidade
+    -- Invisibilidade para todos (usar LocalTransparencyModifier)
     if LocalPlayer.Character then
         for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
             if v:IsA("BasePart") then
-                v.Transparency = 1
+                v.LocalTransparencyModifier = 1
             elseif v:IsA("Decal") then
                 v.Transparency = 1
             end
         end
     end
-    -- Noclip e voo
-    local flySpeed = 3
-    local flyVector = Vector3.new()
-    local flying = true
-    local function getMoveVector()
-        local move = Vector3.new()
-        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Vector3.new(0,0,-1) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move + Vector3.new(0,0,1) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move + Vector3.new(-1,0,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Vector3.new(1,0,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move + Vector3.new(0,-1,0) end
-        return move.Unit.Magnitude > 0 and move.Unit or Vector3.new()
-    end
-    noclipConn = RunService.Stepped:Connect(function(_, dt)
+    -- Noclip e voo suave
+    local flySpeed = 40
+    noclipConn = RunService.RenderStepped:Connect(function(dt)
         if noclipActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
             end
-            -- Voo
-            local move = getMoveVector()
+            local move = Vector3.new()
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + workspace.CurrentCamera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - workspace.CurrentCamera.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - workspace.CurrentCamera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + workspace.CurrentCamera.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
             if move.Magnitude > 0 then
-                LocalPlayer.Character:MoveTo(LocalPlayer.Character.HumanoidRootPart.Position + move * flySpeed)
+                move = move.Unit * flySpeed * dt
+                local hrp = LocalPlayer.Character.HumanoidRootPart
+                hrp.Velocity = Vector3.new()
+                hrp.CFrame = hrp.CFrame + move
             end
         end
     end)
@@ -1332,7 +1328,7 @@ local function disableNoclip()
         for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
             if v:IsA("BasePart") then
                 v.CanCollide = true
-                v.Transparency = 0
+                v.LocalTransparencyModifier = 0
             elseif v:IsA("Decal") then
                 v.Transparency = 0
             end

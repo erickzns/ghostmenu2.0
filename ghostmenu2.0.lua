@@ -240,10 +240,10 @@ moneyLabel.TextColor3 = Color3.fromRGB(255, 40, 40)
 moneyLabel.Font = Enum.Font.GothamBold
 moneyLabel.TextSize = 18
 moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
-moneyLabel.Text = "Money: " .. tostring(getLocalPlayerMoney())
+moneyLabel.Text = tostring(getLocalPlayerMoney())
 
 local function updateMoneyLabel()
-    moneyLabel.Text = "Money: " .. tostring(getLocalPlayerMoney())
+    moneyLabel.Text = tostring(getLocalPlayerMoney())
 end
 
 local Players = game:GetService("Players")

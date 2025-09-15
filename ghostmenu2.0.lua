@@ -277,7 +277,7 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
     label.TextColor3 = Color3.fromRGB(220, 220, 230)
     label.TextXAlignment = Enum.TextXAlignment.Left
     label.Parent = parent
-        local box = Instance.new("TextButton") -- Create the dropdown button
+    local box = Instance.new("TextButton")
     box.Size = UDim2.new(0, 160, 0, 26)
     box.Position = UDim2.new(0, x+122, 0, y-2)
     box.BackgroundColor3 = Color3.fromRGB(24, 24, 28)
@@ -313,13 +313,22 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
             return
         end
         dropdownOpen = true
+        -- Frame para rolagem
         dropdownFrame = Instance.new("Frame")
-        dropdownFrame.Size = UDim2.new(0, 160, 0, #options*24)
+        dropdownFrame.Size = UDim2.new(0, 160, 0, math.min(#options, 8)*24)
         dropdownFrame.Position = UDim2.new(0, x+122, 0, y+24)
         dropdownFrame.BackgroundColor3 = Color3.fromRGB(32,32,36)
         dropdownFrame.BorderSizePixel = 0
         dropdownFrame.ZIndex = 10
         dropdownFrame.Parent = parent
+        local scroll = Instance.new("ScrollingFrame")
+        scroll.Size = UDim2.new(1, 0, 1, 0)
+        scroll.CanvasSize = UDim2.new(0, 0, 0, #options*24)
+        scroll.ScrollBarThickness = 4
+        scroll.BackgroundTransparency = 1
+        scroll.BorderSizePixel = 0
+        scroll.ZIndex = 11
+        scroll.Parent = dropdownFrame
         for i, opt in ipairs(options) do
             local optBtn = Instance.new("TextButton")
             optBtn.Size = UDim2.new(1, 0, 0, 24)
@@ -330,8 +339,8 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
             optBtn.TextSize = 14
             optBtn.TextColor3 = Color3.fromRGB(180,180,200)
             optBtn.BorderSizePixel = 0
-            optBtn.ZIndex = 11
-            optBtn.Parent = dropdownFrame
+            optBtn.ZIndex = 12
+            optBtn.Parent = scroll
             optBtn.MouseButton1Click:Connect(function()
                 valueLabel.Text = opt
                 selectedIndex = i

@@ -1409,6 +1409,88 @@ targetsOption = "Knocked, Bots"
 local targetsDropdown, getTargetsOption = createDropdown(settingsScroll, 0, yS, "Targets", targetsOptionsList, 1, function(idx, val)
     targetsOption = val
 end)
+
+-- Mini lista de armas detectadas automaticamente
+local function getWeaponsList()
+    local containers = {
+        game:GetService("ReplicatedStorage"),
+        game:GetService("Workspace"),
+        game:GetService("StarterPack"),
+    }
+    local armas = {}
+    local added = {}
+    for _, container in ipairs(containers) do
+        for _, obj in ipairs(container:GetDescendants()) do
+            if obj:IsA("Tool") or obj:IsA("HopperBin") then
+                if not added[obj.Name] then
+                    table.insert(armas, obj.Name)
+                    added[obj.Name] = true
+                end
+            end
+        end
+    end
+    table.sort(armas)
+    return armas
+end
+
+local selectedWeapon = nil
+local function onWeaponSelect(idx, val)
+    selectedWeapon = val
+end
+local weaponDropdown, getSelectedWeapon = createDropdown(settingsScroll, 0, yS, "Selecionar Arma", getWeaponsList(), 1, onWeaponSelect)
+yS = yS + 32
+
+local puxarArmaBtn = Instance.new("TextButton")
+puxarArmaBtn.Parent = settingsScroll
+puxarArmaBtn.Position = UDim2.new(0, 0, 0, yS)
+puxarArmaBtn.Size = UDim2.new(0, 120, 0, 24)
+puxarArmaBtn.BackgroundColor3 = Color3.fromRGB(255,40,40)
+puxarArmaBtn.TextColor3 = Color3.fromRGB(255,255,255)
+puxarArmaBtn.Text = "Puxar Arma"
+puxarArmaBtn.Font = Enum.Font.GothamBold
+puxarArmaBtn.TextSize = 15
+puxarArmaBtn.AutoButtonColor = true
+
+local function giveWeaponToLocalPlayer(weaponName)
+    local containers = {
+        game:GetService("ReplicatedStorage"),
+        game:GetService("Workspace"),
+        game:GetService("StarterPack"),
+    }
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local char = LocalPlayer and LocalPlayer.Character
+    for _, container in ipairs(containers) do
+        local tool = container:FindFirstChild(weaponName, true)
+        if tool and (tool:IsA("Tool") or tool:IsA("HopperBin")) then
+            local clone = tool:Clone()
+            if char then
+                clone.Parent = char
+            else
+                clone.Parent = LocalPlayer.Backpack
+            end
+            return true
+        end
+    end
+    -- Tenta RemoteEvent
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local remoteNames = {"GiveGun", "GiveWeapon", "WeaponEvent", "GunEvent", "AddWeapon"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(weaponName)
+            return true
+        end
+    end
+    return false
+end
+
+puxarArmaBtn.MouseButton1Click:Connect(function()
+    local arma = selectedWeapon or (getSelectedWeapon and getSelectedWeapon())
+    if arma then
+        giveWeaponToLocalPlayer(arma)
+    end
+end)
 yS = yS + 32
 
 -- Color picker para cor geral do ESP

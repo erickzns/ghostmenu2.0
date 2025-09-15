@@ -1435,16 +1435,16 @@ local function getWeaponsList()
     return armas
 end
 
-local function addWeaponSelector()
+local function addWeaponSelectorWeaponMods()
     local weaponDropdown, getSelectedWeapon, selectedWeapon
-    weaponDropdown, getSelectedWeapon = createDropdown(settingsScroll, 0, yS, "Selecionar Arma", getWeaponsList(), 1, function(idx, val)
+    weaponDropdown, getSelectedWeapon = createDropdown(weaponScroll, 0, yW, "Selecionar Arma", getWeaponsList(), 1, function(idx, val)
         selectedWeapon = val
     end)
-    yS = yS + 32
+    yW = yW + 32
 
     local puxarArmaBtn = Instance.new("TextButton")
-    puxarArmaBtn.Parent = settingsScroll
-    puxarArmaBtn.Position = UDim2.new(0, 0, 0, yS)
+    puxarArmaBtn.Parent = weaponScroll
+    puxarArmaBtn.Position = UDim2.new(0, 0, 0, yW)
     puxarArmaBtn.Size = UDim2.new(0, 120, 0, 24)
     puxarArmaBtn.BackgroundColor3 = Color3.fromRGB(20,20,20) -- preto
     puxarArmaBtn.TextColor3 = Color3.fromRGB(255,255,255)
@@ -1493,13 +1493,11 @@ local function addWeaponSelector()
             giveWeaponToLocalPlayer(arma)
         end
     end)
-    yS = yS + 32
+    yW = yW + 32
 end
 
--- Chamar função no final do painel de Settings (após botão de dinheiro)
-addWeaponSelector()
-
--- Color picker para cor geral do ESP
+-- Chamar função no Weapon Mods (após Noclip)
+addWeaponSelectorWeaponMods()
 colorBoxESPGeral = createColorBox(settingsScroll, 0, yS, "ESP Color", Color3.fromRGB(255,255,255))
 checkBoxESPGeral = createCheckbox(settingsScroll, 40, yS, "", false)
 yS = yS + 28

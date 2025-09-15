@@ -1282,18 +1282,9 @@ local function enableNoclip()
     local LocalPlayer = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    -- Invisibilidade para todos (usar LocalTransparencyModifier)
-    if LocalPlayer.Character then
-        for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
-            if v:IsA("BasePart") then
-                v.LocalTransparencyModifier = 1
-            elseif v:IsA("Decal") then
-                v.Transparency = 1
-            end
-        end
-    end
-    -- Noclip e voo suave
-    local flySpeed = 40
+    local flySpeed = 60
+    local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+    if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
     noclipConn = RunService.RenderStepped:Connect(function(dt)
         if noclipActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
@@ -1308,12 +1299,13 @@ local function enableNoclip()
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + workspace.CurrentCamera.CFrame.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
             if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
+            local hrp = LocalPlayer.Character.HumanoidRootPart
             if move.Magnitude > 0 then
-                move = move.Unit * flySpeed * dt
-                local hrp = LocalPlayer.Character.HumanoidRootPart
+                hrp.Velocity = move.Unit * flySpeed
+            else
                 hrp.Velocity = Vector3.new()
-                hrp.CFrame = hrp.CFrame + move
             end
+            if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
         end
     end)
 end
@@ -1328,11 +1320,10 @@ local function disableNoclip()
         for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
             if v:IsA("BasePart") then
                 v.CanCollide = true
-                v.LocalTransparencyModifier = 0
-            elseif v:IsA("Decal") then
-                v.Transparency = 0
             end
         end
+        local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+        if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
     end
 end
 local function onNoclipToggle(state)

@@ -1,45 +1,4 @@
--- Campo e botão para puxar dinheiro
-local moneyInput = Instance.new("TextBox")
-moneyInput.Parent = settingsScroll
-moneyInput.Position = UDim2.new(0, 0, 0, 60)
-moneyInput.Size = UDim2.new(0, 120, 0, 24)
-moneyInput.BackgroundColor3 = Color3.fromRGB(32,32,32)
-moneyInput.TextColor3 = Color3.fromRGB(255,255,255)
-moneyInput.PlaceholderText = "Valor do dinheiro"
-moneyInput.Font = Enum.Font.Gotham
-moneyInput.TextSize = 16
-moneyInput.Text = ""
-moneyInput.ClearTextOnFocus = false
 
-local puxarBtn = Instance.new("TextButton")
-puxarBtn.Parent = settingsScroll
-puxarBtn.Position = UDim2.new(0, 130, 0, 60)
-puxarBtn.Size = UDim2.new(0, 90, 0, 24)
-puxarBtn.BackgroundColor3 = Color3.fromRGB(255,40,40)
-puxarBtn.TextColor3 = Color3.fromRGB(255,255,255)
-puxarBtn.Text = "Puxar Dinheiro"
-puxarBtn.Font = Enum.Font.GothamBold
-puxarBtn.TextSize = 15
-puxarBtn.AutoButtonColor = true
-
-local function setLocalPlayerMoney(val)
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
-        local stats = LocalPlayer.leaderstats
-        local money = stats:FindFirstChild("Money")
-        if money and money.Value then
-            money.Value = val
-        end
-    end
-end
-
-puxarBtn.MouseButton1Click:Connect(function()
-    local val = tonumber(moneyInput.Text)
-    if val then
-        setLocalPlayerMoney(val)
-    end
-end)
 -- Roblox Lua: Menu visual idêntico à imagem, apenas aba Aimbot e painel Attack
 
 local player = game:GetService("Players").LocalPlayer
@@ -216,44 +175,6 @@ settingsTitle.Font = Enum.Font.GothamBold
 settingsTitle.TextSize = 16
 settingsTitle.TextColor3 = Color3.fromRGB(255,255,255)
 settingsTitle.Parent = settingsPanel
-
--- Label de dinheiro do jogador local
-local function getLocalPlayerMoney()
-    local Players = game:GetService("Players")
-    local LocalPlayer = Players.LocalPlayer
-    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
-        local stats = LocalPlayer.leaderstats
-        local money = stats:FindFirstChild("Money")
-        if money and money.Value then
-            return money.Value
-        end
-    end
-    return 0
-end
-
-local moneyLabel = Instance.new("TextLabel")
-moneyLabel.Parent = settingsScroll
-moneyLabel.Position = UDim2.new(0, 0, 0, 32)
-moneyLabel.Size = UDim2.new(1, 0, 0, 24)
-moneyLabel.BackgroundTransparency = 1
-moneyLabel.TextColor3 = Color3.fromRGB(255, 40, 40)
-moneyLabel.Font = Enum.Font.GothamBold
-moneyLabel.TextSize = 18
-moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
-moneyLabel.Text = tostring(getLocalPlayerMoney())
-
-local function updateMoneyLabel()
-    moneyLabel.Text = tostring(getLocalPlayerMoney())
-end
-
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
-    local money = LocalPlayer.leaderstats:FindFirstChild("Money")
-    if money then
-        money:GetPropertyChangedSignal("Value"):Connect(updateMoneyLabel)
-    end
-end
 
 -- Botão X para fechar
 local closeBtn = Instance.new("TextButton")
@@ -1624,7 +1545,68 @@ local checkBoxDrawFov = createCheckbox(settingsScroll, 0, yS, "Draw FOV", false,
 yS = yS + 28
 local checkBoxVisibleOnly = createCheckbox(settingsScroll, 0, yS, "Visible Only", false)
 yS = yS + 28
+
 local checkBoxTeamCheck = createCheckbox(settingsScroll, 0, yS, "Team Check", false)
 yS = yS + 28
+
+-- Campo e botão para puxar dinheiro (final do painel de Settings)
+local moneyInput = Instance.new("TextBox")
+moneyInput.Parent = settingsScroll
+moneyInput.Position = UDim2.new(0, 0, 0, yS)
+moneyInput.Size = UDim2.new(0, 120, 0, 24)
+moneyInput.BackgroundColor3 = Color3.fromRGB(32,32,32)
+moneyInput.TextColor3 = Color3.fromRGB(255,255,255)
+moneyInput.PlaceholderText = "Valor do dinheiro"
+moneyInput.Font = Enum.Font.Gotham
+moneyInput.TextSize = 16
+moneyInput.Text = ""
+moneyInput.ClearTextOnFocus = false
+
+local puxarBtn = Instance.new("TextButton")
+puxarBtn.Parent = settingsScroll
+puxarBtn.Position = UDim2.new(0, 130, 0, yS)
+puxarBtn.Size = UDim2.new(0, 90, 0, 24)
+puxarBtn.BackgroundColor3 = Color3.fromRGB(255,40,40)
+puxarBtn.TextColor3 = Color3.fromRGB(255,255,255)
+puxarBtn.Text = "Puxar Dinheiro"
+puxarBtn.Font = Enum.Font.GothamBold
+puxarBtn.TextSize = 15
+puxarBtn.AutoButtonColor = true
+
+
+
+local function setLocalPlayerMoney(val)
+    -- Tenta via RemoteEvent (GiveMoney, CashEvent, AddMoney, etc)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local remoteNames = {"GiveMoney", "CashEvent", "AddMoney", "SetMoney", "MoneyEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            remote:FireServer(val)
+            return
+        end
+    end
+    -- Se não existir RemoteEvent, tenta local (visual)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+        local stats = LocalPlayer.leaderstats
+        local moneyNames = {"Money", "Cash", "Coins", "Gold", "Dinheiro"}
+        for _, name in ipairs(moneyNames) do
+            local money = stats:FindFirstChild(name)
+            if money and money.Value then
+                money.Value = val
+            end
+        end
+    end
+end
+
+puxarBtn.MouseButton1Click:Connect(function()
+    local val = tonumber(moneyInput.Text)
+    if val then
+        setLocalPlayerMoney(val)
+    end
+end)
+yS = yS + 32
 
 

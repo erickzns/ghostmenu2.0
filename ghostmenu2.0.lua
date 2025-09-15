@@ -1282,7 +1282,8 @@ local function enableNoclip()
     local LocalPlayer = Players.LocalPlayer
     local RunService = game:GetService("RunService")
     local UserInputService = game:GetService("UserInputService")
-    local flySpeed = 60
+    local baseSpeed = 60
+    local fastSpeed = 120
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
     noclipConn = RunService.RenderStepped:Connect(function(dt)
@@ -1293,15 +1294,16 @@ local function enableNoclip()
                 end
             end
             local move = Vector3.new()
-            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + workspace.CurrentCamera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - workspace.CurrentCamera.CFrame.LookVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - workspace.CurrentCamera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + workspace.CurrentCamera.CFrame.RightVector end
-            if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
-            if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move - Vector3.new(0,1,0) end
+            local cam = workspace.CurrentCamera
+            if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - cam.CFrame.LookVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - cam.CFrame.RightVector end
+            if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cam.CFrame.RightVector end
+            -- Espaço e shift não alteram Y diretamente, shift só aumenta velocidade
+            local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and fastSpeed or baseSpeed
             local hrp = LocalPlayer.Character.HumanoidRootPart
             if move.Magnitude > 0 then
-                hrp.Velocity = move.Unit * flySpeed
+                hrp.Velocity = move.Unit * speed
             else
                 hrp.Velocity = Vector3.new()
             end

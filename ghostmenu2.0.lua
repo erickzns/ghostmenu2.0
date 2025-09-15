@@ -322,8 +322,8 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
         dropdownFrame.ZIndex = 10
         dropdownFrame.Parent = parent
         local scroll = Instance.new("ScrollingFrame")
-        scroll.Size = UDim2.new(1, 0, 1, 0)
-        scroll.CanvasSize = UDim2.new(0, 0, 0, #options*24)
+    scroll.Size = UDim2.new(1, 0, 1, 0)
+    scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(#options*24, math.min(#options,8)*24))
         scroll.ScrollBarThickness = 4
         scroll.BackgroundTransparency = 1
         scroll.BorderSizePixel = 0
@@ -1281,12 +1281,42 @@ local function enableNoclip()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local RunService = game:GetService("RunService")
-    noclipConn = RunService.Stepped:Connect(function()
-        if noclipActive and LocalPlayer.Character then
+    local UserInputService = game:GetService("UserInputService")
+    -- Invisibilidade
+    if LocalPlayer.Character then
+        for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Transparency = 1
+            elseif v:IsA("Decal") then
+                v.Transparency = 1
+            end
+        end
+    end
+    -- Noclip e voo
+    local flySpeed = 3
+    local flyVector = Vector3.new()
+    local flying = true
+    local function getMoveVector()
+        local move = Vector3.new()
+        if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + Vector3.new(0,0,-1) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move + Vector3.new(0,0,1) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move + Vector3.new(-1,0,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + Vector3.new(1,0,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.Space) then move = move + Vector3.new(0,1,0) end
+        if UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) then move = move + Vector3.new(0,-1,0) end
+        return move.Unit.Magnitude > 0 and move.Unit or Vector3.new()
+    end
+    noclipConn = RunService.Stepped:Connect(function(_, dt)
+        if noclipActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") and part.CanCollide then
+                if part:IsA("BasePart") then
                     part.CanCollide = false
                 end
+            end
+            -- Voo
+            local move = getMoveVector()
+            if move.Magnitude > 0 then
+                LocalPlayer.Character:MoveTo(LocalPlayer.Character.HumanoidRootPart.Position + move * flySpeed)
             end
         end
     end)
@@ -1299,9 +1329,12 @@ local function disableNoclip()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     if LocalPlayer.Character then
-        for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-            if part:IsA("BasePart") then
-                part.CanCollide = true
+        for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.CanCollide = true
+                v.Transparency = 0
+            elseif v:IsA("Decal") then
+                v.Transparency = 0
             end
         end
     end

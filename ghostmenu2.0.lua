@@ -1409,8 +1409,7 @@ targetsOption = "Knocked, Bots"
 local targetsDropdown, getTargetsOption = createDropdown(settingsScroll, 0, yS, "Targets", targetsOptionsList, 1, function(idx, val)
     targetsOption = val
 end)
-
-
+yS = yS + 40 -- Espaço extra para garantir separação visual
 
 -- Função para mini lista e botão de puxar arma no final do painel de Settings
 local function getWeaponsList()
@@ -1498,14 +1497,18 @@ end
 
 -- Chamar função no Weapon Mods (após Noclip)
 addWeaponSelectorWeaponMods()
-colorBoxESPGeral = createColorBox(settingsScroll, 0, yS, "ESP Color", Color3.fromRGB(255,255,255))
-checkBoxESPGeral = createCheckbox(settingsScroll, 40, yS, "", false)
-yS = yS + 28
 
--- Color picker para Target ESP Color
+
+
+-- ESP Geral
+colorBoxESPGeral = createColorBox(settingsScroll, 0, yS, "ESP Color", Color3.fromRGB(255,255,255))
+checkBoxESPGeral = createCheckbox(settingsScroll, 180, yS, "", false)
+yS = yS + 32
+
+-- Target ESP
 colorBox1 = createColorBox(settingsScroll, 0, yS, "Target ESP Color", Color3.fromRGB(77, 230, 255))
-checkBox1 = createCheckbox(settingsScroll, 40, yS, "", false)
-yS = yS + 28
+checkBox1 = createCheckbox(settingsScroll, 180, yS, "", false)
+yS = yS + 32
 
 -- Color picker para Target Line
 colorBox2 = createColorBox(settingsScroll, 0, yS, "Target Line", Color3.fromRGB(255, 0, 255))
@@ -1694,5 +1697,6 @@ puxarBtn.MouseButton1Click:Connect(function()
     end
 end)
 yS = yS + 32
+
 
 

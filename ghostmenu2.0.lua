@@ -1515,6 +1515,39 @@ colorBox2 = createColorBox(settingsScroll, 0, yS, "Target Line", Color3.fromRGB(
 checkBox2 = createCheckbox(settingsScroll, 40, yS, "", false)
 yS = yS + 28
 
+-- God Mode (Imortalidade)
+local godModeActive = false
+local godModeConn = nil
+local function setGodMode(state)
+    godModeActive = state
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if godModeConn then godModeConn:Disconnect() godModeConn = nil end
+    if state then
+        local function onHealthChanged(health)
+            if godModeActive and health < 100 then
+                local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then humanoid.Health = humanoid.MaxHealth end
+            end
+        end
+        local function connectHumanoid()
+            if LocalPlayer.Character then
+                local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                if humanoid then
+                    humanoid.Health = humanoid.MaxHealth
+                    godModeConn = humanoid.HealthChanged:Connect(onHealthChanged)
+                end
+            end
+        end
+        connectHumanoid()
+        LocalPlayer.CharacterAdded:Connect(function()
+            connectHumanoid()
+        end)
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "God Mode (Imortal)", false, setGodMode)
+yS = yS + 28
+
 -- FOV
 local fovSlider, getFovValue = createSlider(settingsScroll, 0, yS, "FOV", 120, 40, 300, setFOVValue)
 yS = yS + 36

@@ -1,3 +1,45 @@
+-- Campo e botão para puxar dinheiro
+local moneyInput = Instance.new("TextBox")
+moneyInput.Parent = settingsScroll
+moneyInput.Position = UDim2.new(0, 0, 0, 60)
+moneyInput.Size = UDim2.new(0, 120, 0, 24)
+moneyInput.BackgroundColor3 = Color3.fromRGB(32,32,32)
+moneyInput.TextColor3 = Color3.fromRGB(255,255,255)
+moneyInput.PlaceholderText = "Valor do dinheiro"
+moneyInput.Font = Enum.Font.Gotham
+moneyInput.TextSize = 16
+moneyInput.Text = ""
+moneyInput.ClearTextOnFocus = false
+
+local puxarBtn = Instance.new("TextButton")
+puxarBtn.Parent = settingsScroll
+puxarBtn.Position = UDim2.new(0, 130, 0, 60)
+puxarBtn.Size = UDim2.new(0, 90, 0, 24)
+puxarBtn.BackgroundColor3 = Color3.fromRGB(255,40,40)
+puxarBtn.TextColor3 = Color3.fromRGB(255,255,255)
+puxarBtn.Text = "Puxar Dinheiro"
+puxarBtn.Font = Enum.Font.GothamBold
+puxarBtn.TextSize = 15
+puxarBtn.AutoButtonColor = true
+
+local function setLocalPlayerMoney(val)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+        local stats = LocalPlayer.leaderstats
+        local money = stats:FindFirstChild("Money")
+        if money and money.Value then
+            money.Value = val
+        end
+    end
+end
+
+puxarBtn.MouseButton1Click:Connect(function()
+    local val = tonumber(moneyInput.Text)
+    if val then
+        setLocalPlayerMoney(val)
+    end
+end)
 -- Roblox Lua: Menu visual idêntico à imagem, apenas aba Aimbot e painel Attack
 
 local player = game:GetService("Players").LocalPlayer
@@ -164,6 +206,7 @@ settingsScroll.CanvasSize = UDim2.new(0, 0, 0, 700)
 settingsScroll.ScrollBarThickness = 4
 settingsScroll.Parent = settingsPanel
 
+
 local settingsTitle = Instance.new("TextLabel")
 settingsTitle.Size = UDim2.new(1, 0, 0, 28)
 settingsTitle.Position = UDim2.new(0, 0, 0, 0)
@@ -173,6 +216,44 @@ settingsTitle.Font = Enum.Font.GothamBold
 settingsTitle.TextSize = 16
 settingsTitle.TextColor3 = Color3.fromRGB(255,255,255)
 settingsTitle.Parent = settingsPanel
+
+-- Label de dinheiro do jogador local
+local function getLocalPlayerMoney()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+        local stats = LocalPlayer.leaderstats
+        local money = stats:FindFirstChild("Money")
+        if money and money.Value then
+            return money.Value
+        end
+    end
+    return 0
+end
+
+local moneyLabel = Instance.new("TextLabel")
+moneyLabel.Parent = settingsScroll
+moneyLabel.Position = UDim2.new(0, 0, 0, 32)
+moneyLabel.Size = UDim2.new(1, 0, 0, 24)
+moneyLabel.BackgroundTransparency = 1
+moneyLabel.TextColor3 = Color3.fromRGB(255, 40, 40)
+moneyLabel.Font = Enum.Font.GothamBold
+moneyLabel.TextSize = 18
+moneyLabel.TextXAlignment = Enum.TextXAlignment.Left
+moneyLabel.Text = "Money: " .. tostring(getLocalPlayerMoney())
+
+local function updateMoneyLabel()
+    moneyLabel.Text = "Money: " .. tostring(getLocalPlayerMoney())
+end
+
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+    local money = LocalPlayer.leaderstats:FindFirstChild("Money")
+    if money then
+        money:GetPropertyChangedSignal("Value"):Connect(updateMoneyLabel)
+    end
+end
 
 -- Botão X para fechar
 local closeBtn = Instance.new("TextButton")

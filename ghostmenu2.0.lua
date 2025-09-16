@@ -1320,6 +1320,7 @@ yW = yW + 28
 local noclipActive = false
 local noclipConn = nil
 local function enableNoclip()
+    if noclipConn then return end -- já está ativo
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local RunService = game:GetService("RunService")
@@ -1329,7 +1330,8 @@ local function enableNoclip()
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
     noclipConn = RunService.RenderStepped:Connect(function(dt)
-        if noclipActive and LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
+        if not noclipActive then return end
+        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
             for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
                 if part:IsA("BasePart") then
                     part.CanCollide = false
@@ -1341,7 +1343,6 @@ local function enableNoclip()
             if UserInputService:IsKeyDown(Enum.KeyCode.S) then move = move - cam.CFrame.LookVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.A) then move = move - cam.CFrame.RightVector end
             if UserInputService:IsKeyDown(Enum.KeyCode.D) then move = move + cam.CFrame.RightVector end
-            -- Espaço e shift não alteram Y diretamente, shift só aumenta velocidade
             local speed = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and fastSpeed or baseSpeed
             local hrp = LocalPlayer.Character.HumanoidRootPart
             if move.Magnitude > 0 then

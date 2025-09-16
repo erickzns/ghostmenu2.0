@@ -1,5 +1,19 @@
-
 -- Roblox Lua: Menu visual idêntico à imagem, apenas aba Aimbot e painel Attack
+
+-- Bypass simples: só bloqueia RemoteEvent e RemoteFunction
+local BypassEnabled = false
+
+local function fireServerBypass(remote, ...)
+    if not BypassEnabled and remote and remote:IsA("RemoteEvent") then
+        return remote:FireServer(...)
+    end
+end
+
+local function invokeServerBypass(remote, ...)
+    if not BypassEnabled and remote and remote:IsA("RemoteFunction") then
+        return remote:InvokeServer(...)
+    end
+end
 
 local player = game:GetService("Players").LocalPlayer
 
@@ -1711,7 +1725,7 @@ local function cloneAppearance()
         end
     end
 end
-createCheckbox(settingsScroll, 0, yS, "Clonar Aparência", false, function(state)
+createCheckbox(settingsScroll,  0, yS, "Clonar Aparência", false, function(state)
     if state then cloneAppearance() end
 end)
 yS = yS + 28
@@ -1848,6 +1862,15 @@ puxarBtn.MouseButton1Click:Connect(function()
 end)
 yS = yS + 32
 
-
-
-
+-- No final do painel de Settings, adicionar o checkbox do Bypass
+yS = yS + 8
+local function onBypassCheckbox(state)
+    BypassEnabled = state
+    if state then
+        print("[Bypass] Ativado: Nenhum dado será enviado ao servidor.")
+    else
+        print("[Bypass] Desativado: Dados podem ser enviados ao servidor.")
+    end
+end
+createCheckbox(settingsScroll, 0, yS, "Bypass Anticheat (Bloquear servidor)", false, onBypassCheckbox)
+yS = yS + 32

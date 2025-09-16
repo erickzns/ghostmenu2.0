@@ -15,15 +15,25 @@ local function invokeServerBypass(remote, ...)
     end
 end
 
+-- Antes de criar o menu:
 local player = game:GetService("Players").LocalPlayer
+local function getOrCreateMenu()
+    local gui = player.PlayerGui:FindFirstChild("FortniteMenu")
+    if gui then
+        return gui
+    end
+    -- Criação do menu normalmente
+    gui = Instance.new("ScreenGui")
+    gui.Name = "FortniteMenu"
+    gui.ResetOnSpawn = false
+    gui.IgnoreGuiInset = true -- ignora a barra superior do Roblox
+    gui.DisplayOrder = 9999 -- sempre no topo
+    gui.ZIndexBehavior = Enum.ZIndexBehavior.Global -- zindex global para sobrepor tudo
+    gui.Parent = player.PlayerGui
+    return gui
+end
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "FortniteMenu"
-gui.ResetOnSpawn = false
-gui.IgnoreGuiInset = true -- ignora a barra superior do Roblox
-gui.DisplayOrder = 9999 -- sempre no topo
-gui.ZIndexBehavior = Enum.ZIndexBehavior.Global -- zindex global para sobrepor tudo
-gui.Parent = player:WaitForChild("PlayerGui")
+local gui = getOrCreateMenu()
 
 -- Janela principal (ainda maior)
 local main = Instance.new("Frame")
@@ -866,7 +876,23 @@ end
         if colorConnLine then colorConnLine:Disconnect() end
     end
 
-    -- ...existing code...
+    -- Proteção: reanexar o menu ao PlayerGui se ele for recriado
+    player.PlayerGui.ChildRemoved:Connect(function(child)
+    if child.Name == "FortniteMenu" then
+        wait(0.5)
+        if not player.PlayerGui:FindFirstChild("FortniteMenu") then
+            gui.Parent = player.PlayerGui
+            print("[Proteção] Menu reanexado ao PlayerGui.")
+        end
+    end
+end)
+
+player.CharacterAdded:Connect(function()
+    if not player.PlayerGui:FindFirstChild("FortniteMenu") then
+        gui.Parent = player.PlayerGui
+        print("[Proteção] Menu reanexado após respawn.")
+    end
+end)
 end
 function onESPToggle(state)
     if state then
@@ -1704,6 +1730,11 @@ local function freezeSelectedPlayer(state)
     end
 end
 createCheckbox(settingsScroll, 0, yS, "Congelar Player", false, freezeSelectedPlayer)
+
+
+
+
+
 yS = yS + 28
 
 -- Função: Clonar Aparência
@@ -1725,7 +1756,7 @@ local function cloneAppearance()
         end
     end
 end
-createCheckbox(settingsScroll,  0, yS, "Clonar Aparência", false, function(state)
+createCheckbox(settingsScroll,    0, yS, "Clonar Aparência", false, function(state)
     if state then cloneAppearance() end
 end)
 yS = yS + 28
@@ -1874,3 +1905,41 @@ local function onBypassCheckbox(state)
 end
 createCheckbox(settingsScroll, 0, yS, "Bypass Anticheat (Bloquear servidor)", false, onBypassCheckbox)
 yS = yS + 32
+
+-- Após criar o gui (ScreenGui principal):
+
+gui:GetPropertyChangedSignal("Visible"):Connect(function()
+    if not gui.Visible then
+        gui.Visible = true
+        print("[Proteção] Menu forçado a ficar visível.")
+    end
+end)
+
+-- Função para desativar/limpar todas as funções do mod menu
+local function cleanupModMenu()
+    -- Exemplo de limpeza (adicione aqui todas as funções que precisam ser desativadas):
+    -- Desconectar eventos
+    if espConnection then espConnection:Disconnect() espConnection = nil end
+    if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
+    if aimbotConnection then aimbotConnection:Disconnect() aimbotConnection = nil end
+    -- Destruir desenhos
+    if fovCircle then fovCircle:Remove() fovCircle = nil end
+    if espObjects then
+        for _, obj in pairs(espObjects) do
+            if obj.Remove then obj:Remove() end
+        end
+        espObjects = {}
+    end
+    -- Resetar variáveis de estado
+    noclipActive = false
+    aimbotActive = false
+    espActive = false
+    -- ...adicione outras limpezas necessárias...
+    print("[ModMenu] Todas as funções foram desativadas e limpas.")
+end
+
+gui.AncestryChanged:Connect(function(_, parent)
+    if not parent then
+        cleanupModMenu()
+    end
+end)

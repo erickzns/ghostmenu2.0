@@ -1,5 +1,7 @@
 -- Roblox Lua: Menu visual idêntico à imagem, apenas aba Aimbot e painel Attack
 
+print("[DEBUG] Script carregado e executando!")
+
 -- Bypass simples: só bloqueia RemoteEvent e RemoteFunction
 local BypassEnabled = false
 
@@ -9,14 +11,17 @@ local function fireServerBypass(remote, ...)
     end
 end
 
-local function invokeServerBypass(remote, ...)
-    if not BypassEnabled and remote and remote:IsA("RemoteFunction") then
-        return remote:InvokeServer(...)
-    end
-end
-
 -- Antes de criar o menu:
 local player = game:GetService("Players").LocalPlayer
+-- Defaults globais
+local FOV_RADIUS = 120
+local fovCircleColor = Color3.fromRGB(255, 40, 40)
+local fovCircle = nil
+-- Estado/shared defaults
+local targetsOption = "Knocked, Bots"
+local selectedBone = nil
+local selectedPlayer = nil
+local selectedWeapon = nil
 local function getOrCreateMenu()
     local gui = player.PlayerGui:FindFirstChild("FortniteMenu")
     if gui then
@@ -45,9 +50,64 @@ main.BorderSizePixel = 0
 main.AnchorPoint = Vector2.new(0.5, 0.5)
 main.Parent = gui
 
+-- Visual moderno para a janela principal: gradiente e contorno sutil
+-- (Visuals para o frame principal definidos mais abaixo)
+
+-- Services para animações
+local TweenService = game:GetService("TweenService")
+local tweenInfoFast = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+local tweenInfoMed = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function showMenu()
+    if main.Visible then return end
+    main.Position = UDim2.new(0.5, -410, 0.3, -260)
+    main.BackgroundTransparency = 1
+    main.Visible = true
+    TweenService:Create(main, tweenInfoMed, {Position = UDim2.new(0.5, -410, 0.5, -260), BackgroundTransparency = 0}):Play()
+end
+
+-- Helper seguro para Drawing (alguns ambientes não expõem Drawing API)
+local function safeDrawingNew(kind)
+    if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then
+        return nil
+    end
+    local ok, obj = pcall(function() return Drawing.new(kind) end)
+    if ok and obj then return obj end
+    return nil
+end
+
+local function safeRemoveDrawing(obj)
+    if not obj then return end
+    pcall(function()
+        if obj.Remove then obj:Remove() elseif obj.remove then obj:remove() end
+    end)
+end
+
+local function hideMenu()
+    if not main.Visible then return end
+    local tw = TweenService:Create(main, tweenInfoFast, {Position = UDim2.new(0.5, -410, 0.2, -260), BackgroundTransparency = 1})
+    tw:Play()
+    tw.Completed:Connect(function()
+        main.Visible = false
+    end)
+end
+
 local mainCorner = Instance.new("UICorner")
 mainCorner.CornerRadius = UDim.new(0, 8)
 mainCorner.Parent = main
+
+-- Visual polish: gradient and border for main
+local mainStroke = Instance.new("UIStroke")
+mainStroke.Thickness = 1
+mainStroke.Color = Color3.fromRGB(50,50,50)
+mainStroke.Parent = main
+local mainGrad = Instance.new("UIGradient")
+mainGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(24,24,28)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(20,20,24)),
+}
+mainGrad.Rotation = 0
+mainGrad.Parent = main
 
 -- Título
 local title = Instance.new("TextLabel")
@@ -60,11 +120,17 @@ title.TextSize = 20
 title.TextColor3 = Color3.fromRGB(255, 40, 40) -- vermelho
 title.Parent = main
 
+-- Ajuste visual do título (barra superior com fundo)
+title.BackgroundTransparency = 0
+title.BackgroundColor3 = Color3.fromRGB(16,16,18)
+title.TextColor3 = Color3.fromRGB(140,220,255)
+title.TextXAlignment = Enum.TextXAlignment.Center
+
 -- Aba lateral
 local sidebar = Instance.new("Frame")
 sidebar.Size = UDim2.new(0, 110, 1, -36)
 sidebar.Position = UDim2.new(0, 0, 0, 36)
-sidebar.BackgroundColor3 = Color3.fromRGB(30, 0, 0) -- preto avermelhado
+sidebar.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- base preta
 sidebar.BorderSizePixel = 0
 sidebar.Parent = main
 
@@ -72,23 +138,167 @@ local sidebarCorner = Instance.new("UICorner")
 sidebarCorner.CornerRadius = UDim.new(0, 8)
 sidebarCorner.Parent = sidebar
 
+-- Gradient e contorno neon sutil para visual moderno
+local sidebarGrad = Instance.new("UIGradient")
+sidebarGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(12,12,14)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(24,24,28)),
+})
+sidebarGrad.Rotation = 20
+sidebarGrad.Parent = sidebar
+
+local sidebarStroke = Instance.new("UIStroke")
+sidebarStroke.Thickness = 1
+sidebarStroke.Color = Color3.fromRGB(0, 200, 255)
+sidebarStroke.Transparency = 0.9
+sidebarStroke.Parent = sidebar
+
 -- Botão Aimbot
 local aimbotBtn = Instance.new("TextButton")
 aimbotBtn.Size = UDim2.new(1, 0, 0, 48)
 aimbotBtn.Position = UDim2.new(0, 0, 0, 0)
-aimbotBtn.BackgroundColor3 = Color3.fromRGB(40, 0, 0) -- preto avermelhado
+aimbotBtn.BackgroundColor3 = Color3.fromRGB(0, 0, 0) -- preto
 aimbotBtn.BorderSizePixel = 0
-aimbotBtn.Text = "    Aimbot"
-aimbotBtn.Font = Enum.Font.GothamBold
--- Unicode ícone: U+E13D (pode variar)
-aimbotBtn.TextSize = 18
-aimbotBtn.TextColor3 = Color3.fromRGB(255, 40, 40) -- vermelho
-aimbotBtn.TextXAlignment = Enum.TextXAlignment.Left
+aimbotBtn.Text = ""
+aimbotBtn.AutoButtonColor = false
 aimbotBtn.Parent = sidebar
+
+-- Icon image for aimbot button
+-- Glyph for aimbot button (symbol-only)
+local aimbotGlyph = Instance.new("TextLabel")
+aimbotGlyph.Size = UDim2.new(0, 32, 0, 32)
+aimbotGlyph.Position = UDim2.new(0.5, -16, 0.5, -16)
+aimbotGlyph.BackgroundTransparency = 1
+aimbotGlyph.BorderSizePixel = 0
+aimbotGlyph.Text = "💀"
+aimbotGlyph.Font = Enum.Font.GothamBold
+aimbotGlyph.TextSize = 20
+aimbotGlyph.TextColor3 = Color3.fromRGB(0,0,0)
+aimbotGlyph.TextXAlignment = Enum.TextXAlignment.Center
+aimbotGlyph.Parent = aimbotBtn
 
 local aimbotBtnCorner = Instance.new("UICorner")
 aimbotBtnCorner.CornerRadius = UDim.new(0, 8)
 aimbotBtnCorner.Parent = aimbotBtn
+-- hover
+aimbotBtn.MouseEnter:Connect(function()
+    pcall(function()
+        TweenService:Create(aimbotBtn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(64,64,68)}):Play()
+        pcall(function() TweenService:Create(aimbotGlyph, tweenInfoFast, {TextColor3 = Color3.fromRGB(255,255,255)}):Play() end)
+    end)
+end)
+aimbotBtn.MouseLeave:Connect(function()
+    pcall(function()
+        TweenService:Create(aimbotBtn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(0,0,0)}):Play()
+        pcall(function() TweenService:Create(aimbotGlyph, tweenInfoFast, {TextColor3 = Color3.fromRGB(0,0,0)}):Play() end)
+    end)
+end)
+
+-- Accent à esquerda do botão (indicador ativo/hover)
+local aimbotAccent = Instance.new("Frame")
+aimbotAccent.Size = UDim2.new(0, 4, 1, 0)
+aimbotAccent.Position = UDim2.new(0, 0, 0, 0)
+aimbotAccent.BackgroundColor3 = Color3.fromRGB(0, 200, 255)
+aimbotAccent.BorderSizePixel = 0
+aimbotAccent.BackgroundTransparency = 1
+aimbotAccent.Parent = aimbotBtn
+
+local aimbotAccentCorner = Instance.new("UICorner")
+aimbotAccentCorner.CornerRadius = UDim.new(0, 2)
+aimbotAccentCorner.Parent = aimbotAccent
+
+aimbotBtn.MouseEnter:Connect(function()
+    pcall(function()
+        TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 0}):Play()
+        pcall(function() TweenService:Create(aimbotGlyph, tweenInfoFast, {TextColor3 = Color3.fromRGB(255,255,255)}):Play() end)
+    end)
+end)
+aimbotBtn.MouseLeave:Connect(function()
+    pcall(function()
+        TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 1}):Play()
+        pcall(function() TweenService:Create(aimbotGlyph, tweenInfoFast, {TextColor3 = Color3.fromRGB(0,0,0)}):Play() end)
+    end)
+end)
+
+-- Botões adicionais na aba lateral
+local function makeSidebarBtn(name, icon, y)
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, 0, 0, 48)
+    btn.Position = UDim2.new(0, 0, 0, y)
+    btn.BackgroundColor3 = Color3.fromRGB(0,0,0)
+    btn.BorderSizePixel = 0
+    btn.Text = ""
+    btn.AutoButtonColor = false
+    btn.Parent = sidebar
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0,8)
+    corner.Parent = btn
+
+    -- Icon (ImageLabel) with fallback to glyph TextLabel
+    local iconLabel = Instance.new("ImageLabel")
+    iconLabel.Size = UDim2.new(0, 32, 0, 32)
+    iconLabel.Position = UDim2.new(0.5, -16, 0.5, -16)
+    iconLabel.BackgroundTransparency = 1
+    iconLabel.BorderSizePixel = 0
+    iconLabel.ImageColor3 = Color3.fromRGB(0,0,0)
+    iconLabel.Parent = btn
+
+    if type(icon) == "string" and string.find(icon, "rbxassetid") then
+        iconLabel.Image = icon
+        iconLabel.ImageColor3 = Color3.fromRGB(0,0,0)
+    else
+        -- fallback: use small TextLabel to render glyph
+        iconLabel.Image = ""
+        local glyph = Instance.new("TextLabel")
+        glyph.Size = UDim2.new(1, 0, 1, 0)
+        glyph.Position = UDim2.new(0, 0, 0, 0)
+        glyph.BackgroundTransparency = 1
+        glyph.Text = icon or ""
+        glyph.Font = Enum.Font.GothamBold
+        glyph.TextSize = 18
+        glyph.TextColor3 = Color3.fromRGB(0,0,0)
+        glyph.TextXAlignment = Enum.TextXAlignment.Center
+        glyph.Parent = iconLabel
+    end
+
+    -- No text label: sidebar uses icons only
+
+    local accent = Instance.new("Frame")
+    accent.Size = UDim2.new(0,4,1,0)
+    accent.Position = UDim2.new(0,0,0,0)
+    accent.BackgroundColor3 = Color3.fromRGB(0,200,255)
+    accent.BorderSizePixel = 0
+    accent.BackgroundTransparency = 1
+    accent.Parent = btn
+
+    btn.MouseEnter:Connect(function()
+        pcall(function()
+            TweenService:Create(btn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(64,64,68)}):Play()
+            TweenService:Create(accent, tweenInfoFast, {BackgroundTransparency = 0}):Play()
+            pcall(function() TweenService:Create(iconLabel, tweenInfoFast, {ImageColor3 = Color3.fromRGB(255,255,255)}):Play() end)
+            local g = iconLabel:FindFirstChildOfClass("TextLabel")
+            if g then pcall(function() TweenService:Create(g, tweenInfoFast, {TextColor3 = Color3.fromRGB(255,255,255)}):Play() end) end
+        end)
+    end)
+    btn.MouseLeave:Connect(function()
+        pcall(function()
+            TweenService:Create(btn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(0,0,0)}):Play()
+            TweenService:Create(accent, tweenInfoFast, {BackgroundTransparency = 1}):Play()
+            pcall(function() TweenService:Create(iconLabel, tweenInfoFast, {ImageColor3 = Color3.fromRGB(0,0,0)}):Play() end)
+            local g = iconLabel:FindFirstChildOfClass("TextLabel")
+            if g then pcall(function() TweenService:Create(g, tweenInfoFast, {TextColor3 = Color3.fromRGB(0,0,0)}):Play() end) end
+        end)
+    end)
+
+    return btn, accent, iconLabel
+end
+
+-- Função utilitária para selecionar aba (apenas Aimbot)
+local function selectAimbotTab()
+    pcall(function() TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 0}):Play() end)
+    attackPanel.Visible = true
+end
 
 -- Painel Attack (Aimbot) - área grande à esquerda (ajustado)
 local attackPanel = Instance.new("Frame")
@@ -106,6 +316,24 @@ local border = Instance.new("UIStroke")
 border.Thickness = 1
 border.Color = Color3.fromRGB(40,40,40)
 border.Parent = attackPanel
+
+-- Gradiente animado sutil no painel Attack para aparência tecnológica
+local attackGrad = Instance.new("UIGradient")
+attackGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(18,18,22)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(30,30,36)),
+})
+attackGrad.Rotation = 0
+attackGrad.Parent = attackPanel
+
+spawn(function()
+    local rot = 0
+    while attackPanel and attackPanel.Parent do
+        rot = (rot + 90) % 360
+        pcall(function() TweenService:Create(attackGrad, tweenInfoMed, {Rotation = rot}):Play() end)
+        wait(2.6)
+    end
+end)
 
 -- Scroll para Attack
 local attackScroll = Instance.new("ScrollingFrame")
@@ -144,6 +372,30 @@ weaponBorder.Thickness = 1
 weaponBorder.Color = Color3.fromRGB(40,40,40)
 weaponBorder.Parent = weaponPanel
 
+-- Visual moderno para Weapon Panel
+local weaponGrad = Instance.new("UIGradient")
+weaponGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(22,22,26)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(30,30,36)),
+})
+weaponGrad.Rotation = 0
+weaponGrad.Parent = weaponPanel
+
+local weaponAccent = Instance.new("UIStroke")
+weaponAccent.Thickness = 1
+weaponAccent.Color = Color3.fromRGB(10,160,220)
+weaponAccent.Transparency = 0.92
+weaponAccent.Parent = weaponPanel
+
+spawn(function()
+    local r = 0
+    while weaponPanel and weaponPanel.Parent do
+        r = (r + 60) % 360
+        pcall(function() TweenService:Create(weaponGrad, tweenInfoMed, {Rotation = r}):Play() end)
+        wait(3)
+    end
+end)
+
 local weaponScroll = Instance.new("ScrollingFrame")
 weaponScroll.Size = UDim2.new(1, 0, 1, -28)
 weaponScroll.Position = UDim2.new(0, 0, 0, 28)
@@ -163,6 +415,80 @@ weaponTitle.TextSize = 16
 weaponTitle.TextColor3 = Color3.fromRGB(255,255,255)
 weaponTitle.Parent = weaponPanel
 
+-- Painel Visuals (substitui texto por símbolos e controles visuais)
+local visualsPanel = Instance.new("Frame")
+visualsPanel.Size = UDim2.new(0, 300, 0, 180)
+visualsPanel.Position = UDim2.new(0, 480, 0, 46)
+visualsPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+visualsPanel.BorderSizePixel = 0
+visualsPanel.Parent = main
+visualsPanel.Visible = false
+
+local visualsCorner = Instance.new("UICorner")
+visualsCorner.CornerRadius = UDim.new(0, 8)
+visualsCorner.Parent = visualsPanel
+
+local visualsBorder = Instance.new("UIStroke")
+visualsBorder.Thickness = 1
+visualsBorder.Color = Color3.fromRGB(40,40,40)
+visualsBorder.Parent = visualsPanel
+
+local visualsScroll = Instance.new("ScrollingFrame")
+visualsScroll.Size = UDim2.new(1, 0, 1, -28)
+visualsScroll.Position = UDim2.new(0, 0, 0, 28)
+visualsScroll.BackgroundTransparency = 1
+visualsScroll.BorderSizePixel = 0
+visualsScroll.CanvasSize = UDim2.new(0, 0, 0, 400)
+visualsScroll.ScrollBarThickness = 4
+visualsScroll.Parent = visualsPanel
+
+local visualsTitle = Instance.new("TextLabel")
+visualsTitle.Size = UDim2.new(1, 0, 0, 28)
+visualsTitle.Position = UDim2.new(0, 0, 0, 0)
+visualsTitle.BackgroundTransparency = 1
+visualsTitle.Text = "Visuals"
+visualsTitle.Font = Enum.Font.GothamBold
+visualsTitle.TextSize = 16
+visualsTitle.TextColor3 = Color3.fromRGB(140,220,255)
+visualsTitle.Parent = visualsPanel
+
+-- Painel Misc (aba inferior direita)
+local miscPanel = Instance.new("Frame")
+miscPanel.Size = UDim2.new(0, 300, 0, 260)
+miscPanel.Position = UDim2.new(0, 480, 0, 236)
+miscPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
+miscPanel.BorderSizePixel = 0
+miscPanel.Parent = main
+miscPanel.Visible = false
+
+local miscCorner = Instance.new("UICorner")
+miscCorner.CornerRadius = UDim.new(0, 8)
+miscCorner.Parent = miscPanel
+
+local miscBorder = Instance.new("UIStroke")
+miscBorder.Thickness = 1
+miscBorder.Color = Color3.fromRGB(40,40,40)
+miscBorder.Parent = miscPanel
+
+local miscScroll = Instance.new("ScrollingFrame")
+miscScroll.Size = UDim2.new(1, 0, 1, -28)
+miscScroll.Position = UDim2.new(0, 0, 0, 28)
+miscScroll.BackgroundTransparency = 1
+miscScroll.BorderSizePixel = 0
+miscScroll.CanvasSize = UDim2.new(0, 0, 0, 400)
+miscScroll.ScrollBarThickness = 4
+miscScroll.Parent = miscPanel
+
+local miscTitle = Instance.new("TextLabel")
+miscTitle.Size = UDim2.new(1, 0, 0, 28)
+miscTitle.Position = UDim2.new(0, 0, 0, 0)
+miscTitle.BackgroundTransparency = 1
+miscTitle.Text = "Misc"
+miscTitle.Font = Enum.Font.GothamBold
+miscTitle.TextSize = 16
+miscTitle.TextColor3 = Color3.fromRGB(140,220,255)
+miscTitle.Parent = miscPanel
+
 -- Painel Settings (direita, abaixo de Weapon Mods, mais abaixo)
 local settingsPanel = Instance.new("Frame")
 settingsPanel.Size = UDim2.new(0, 300, 0, 260)
@@ -179,6 +505,30 @@ local settingsBorder = Instance.new("UIStroke")
 settingsBorder.Thickness = 1
 settingsBorder.Color = Color3.fromRGB(40,40,40)
 settingsBorder.Parent = settingsPanel
+
+-- Visual moderno para Settings Panel
+local settingsGrad = Instance.new("UIGradient")
+settingsGrad.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(20,20,24)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(28,28,32)),
+})
+settingsGrad.Rotation = 0
+settingsGrad.Parent = settingsPanel
+
+local settingsAccent = Instance.new("UIStroke")
+settingsAccent.Thickness = 1
+settingsAccent.Color = Color3.fromRGB(10,160,220)
+settingsAccent.Transparency = 0.92
+settingsAccent.Parent = settingsPanel
+
+spawn(function()
+    local r = 0
+    while settingsPanel and settingsPanel.Parent do
+        r = (r + 45) % 360
+        pcall(function() TweenService:Create(settingsGrad, tweenInfoMed, {Rotation = r}):Play() end)
+        wait(2.6)
+    end
+end)
 
 local settingsScroll = Instance.new("ScrollingFrame")
 settingsScroll.Size = UDim2.new(1, 0, 1, -28)
@@ -197,7 +547,7 @@ settingsTitle.BackgroundTransparency = 1
 settingsTitle.Text = "Settings"
 settingsTitle.Font = Enum.Font.GothamBold
 settingsTitle.TextSize = 16
-settingsTitle.TextColor3 = Color3.fromRGB(255,255,255)
+settingsTitle.TextColor3 = Color3.fromRGB(140,220,255)
 settingsTitle.Parent = settingsPanel
 
 -- Botão X para fechar
@@ -208,19 +558,38 @@ closeBtn.BackgroundColor3 = Color3.fromRGB(32,32,32)
 closeBtn.Text = "✕"
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.TextSize = 22
-closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+closeBtn.TextColor3 = Color3.fromRGB(140, 220, 255)
 closeBtn.BorderSizePixel = 0
 closeBtn.Parent = main
 local closeCorner = Instance.new("UICorner")
 closeCorner.CornerRadius = UDim.new(0, 8)
 closeCorner.Parent = closeBtn
 
-closeBtn.MouseButton1Click:Connect(function()
-    main:Destroy()
+closeBtn.MouseEnter:Connect(function()
+    pcall(function()
+        TweenService:Create(closeBtn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(48,48,48)}):Play()
+        TweenService:Create(closeBtn, tweenInfoFast, {TextColor3 = Color3.fromRGB(255,255,255)}):Play()
+    end)
+end)
+closeBtn.MouseLeave:Connect(function()
+    pcall(function()
+        TweenService:Create(closeBtn, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(32,32,32)}):Play()
+        TweenService:Create(closeBtn, tweenInfoFast, {TextColor3 = Color3.fromRGB(140, 220, 255)}):Play()
+    end)
 end)
 
+
+closeBtn.MouseButton1Click:Connect(function()
+    if main and main.Parent then
+        main:Destroy()
+    end
+end)
+
+
 -- Drag do menu (arrastar pelo título)
-title.Active = true
+if title and title.Parent then
+    title.Active = true
+end
 local dragging, dragInput, dragStart, startPos
 local UIS = game:GetService("UserInputService")
 title.InputBegan:Connect(function(input)
@@ -251,8 +620,12 @@ end)
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.Insert then
+        print("[DEBUG] Tecla Insert pressionada!")
         if main and main.Parent then
-            main.Visible = not main.Visible
+            print("[DEBUG] main existe e tem Parent!")
+            if main.Visible then hideMenu() else showMenu() end
+        else
+            print("[DEBUG] main ou main.Parent não existem!")
         end
     end
 end)
@@ -278,16 +651,46 @@ local function createCheckbox(parent, x, y, labelText, checkedDefault, callback)
     box.Text = ""
     box.AutoButtonColor = false
     box.Parent = parent
+    local boxCorner = Instance.new("UICorner")
+    boxCorner.CornerRadius = UDim.new(0, 6)
+    boxCorner.Parent = box
+    local boxStroke = Instance.new("UIStroke")
+    boxStroke.Thickness = 1
+    boxStroke.Color = Color3.fromRGB(18,18,20)
+    boxStroke.Transparency = 0.9
+    boxStroke.Parent = box
     local check = Instance.new("Frame")
     check.Size = UDim2.new(0, 14, 0, 14)
     check.Position = UDim2.new(0, 4, 0, 4)
-    check.BackgroundColor3 = checked and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(24,24,28)
+    check.BackgroundColor3 = checked and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(24,24,28)
     check.BorderSizePixel = 0
     check.Parent = box
+    local checkCorner = Instance.new("UICorner")
+    checkCorner.CornerRadius = UDim.new(0, 2)
+    checkCorner.Parent = check
+    local boxCornerInternal = Instance.new("UICorner")
+    boxCornerInternal.CornerRadius = UDim.new(0, 6)
+    boxCornerInternal.Parent = box
+    local boxStrokeInternal = Instance.new("UIStroke")
+    boxStrokeInternal.Thickness = 1
+    boxStrokeInternal.Color = Color3.fromRGB(18,18,20)
+    boxStrokeInternal.Transparency = 0.9
+    boxStrokeInternal.Parent = box
     box.MouseButton1Click:Connect(function()
         checked = not checked
-    check.BackgroundColor3 = checked and Color3.fromRGB(255, 40, 40) or Color3.fromRGB(24,24,28)
+    check.BackgroundColor3 = checked and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(24,24,28)
         if callback then callback(checked) end
+    end)
+    -- hover effect
+    box.MouseEnter:Connect(function()
+        pcall(function()
+            TweenService:Create(box, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(34,34,40)}):Play()
+        end)
+    end)
+    box.MouseLeave:Connect(function()
+        pcall(function()
+            TweenService:Create(box, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(24,24,28)}):Play()
+        end)
     end)
     return box, function() return checked end
 end
@@ -347,6 +750,14 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
         dropdownFrame.BorderSizePixel = 0
         dropdownFrame.ZIndex = 10
         dropdownFrame.Parent = parent
+        local ddCorner = Instance.new("UICorner")
+        ddCorner.CornerRadius = UDim.new(0,6)
+        ddCorner.Parent = dropdownFrame
+        local ddStroke = Instance.new("UIStroke")
+        ddStroke.Thickness = 1
+        ddStroke.Color = Color3.fromRGB(16,16,18)
+        ddStroke.Transparency = 0.9
+        ddStroke.Parent = dropdownFrame
         local scroll = Instance.new("ScrollingFrame")
     scroll.Size = UDim2.new(1, 0, 1, 0)
     scroll.CanvasSize = UDim2.new(0, 0, 0, math.max(#options*24, math.min(#options,8)*24))
@@ -375,6 +786,13 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
                 dropdownOpen = false
             end)
         end
+    end)
+    -- hover for dropdown box
+    box.MouseEnter:Connect(function()
+        pcall(function() TweenService:Create(box, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(36,36,44)}):Play() end)
+    end)
+    box.MouseLeave:Connect(function()
+        pcall(function() TweenService:Create(box, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(24,24,28)}):Play() end)
     end)
     return box, function() return options[selectedIndex] end
 end
@@ -442,6 +860,13 @@ local function createSlider(parent, x, y, labelText, value, min, max, callback)
             if callback then callback(value) end
         end
     end)
+    -- hover for knob
+    knob.MouseEnter:Connect(function()
+        pcall(function() TweenService:Create(knob, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(230,230,230)}):Play() end)
+    end)
+    knob.MouseLeave:Connect(function()
+        pcall(function() TweenService:Create(knob, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(255,255,255)}):Play() end)
+    end)
     return knob, function() return value end
 end
 
@@ -505,6 +930,13 @@ local function createColorBox(parent, x, y, labelText, color, callback)
                 colorListOpen = false
             end)
         end
+    end)
+    -- hover for color box
+    box.MouseEnter:Connect(function()
+        pcall(function() TweenService:Create(box, tweenInfoFast, {Size = UDim2.new(0, 26, 0, 26)}):Play() end)
+    end)
+    box.MouseLeave:Connect(function()
+        pcall(function() TweenService:Create(box, tweenInfoFast, {Size = UDim2.new(0, 24, 0, 24)}):Play() end)
     end)
     return box, function() return box.BackgroundColor3 end
 end
@@ -641,28 +1073,17 @@ function enableESP()
         end
         return nil
     end
-function getESPColor()
-    if checkBoxESPGeral and checkBoxESPGeral() then
-        return colorBoxESPGeral and colorBoxESPGeral() or Color3.fromRGB(255,255,255)
-    end
+local function getBoxColor()
     return Color3.fromRGB(255,255,255)
 end
-function updateESPColors()
-    for _, d in ipairs(allDrawings) do
-        if d then d.Color = getESPColor() end
-    end
-end
-local function getBoxColor()
-    return getESPColor()
-end
 local function getLineColor()
-    return getESPColor()
+    return Color3.fromRGB(255,255,255)
 end
 local function getHealthColor()
-    return getESPColor()
+    return Color3.fromRGB(0,255,0)
 end
 local function getTextColor()
-    return getESPColor()
+    return Color3.fromRGB(255,255,255)
 end
             -- Atualiza em tempo real ao mudar cor ou checkbox
     local function getHealthColor()
@@ -727,41 +1148,47 @@ end
         local function onCharacterAdded(character)
             local boxLines = {}
             for i = 1, 4 do
-                local line = Drawing.new("Line")
-                line.Thickness = 2
-                table.insert(allDrawings, line)
+                local line = safeDrawingNew("Line")
+                if line then
+                    line.Thickness = 2
+                    table.insert(allDrawings, line)
+                end
                 boxLines[i] = line
             end
-            local nameTag = Drawing.new("Text")
-            nameTag.Size = 16
-            nameTag.Outline = true
-            nameTag.Center = true
-            table.insert(allDrawings, nameTag)
-            local distanceTag = Drawing.new("Text")
-            distanceTag.Size = 14
-            distanceTag.Outline = true
-            distanceTag.Center = true
-            table.insert(allDrawings, distanceTag)
-            local itemTag = Drawing.new("Text")
-            itemTag.Size = 14
-            itemTag.Outline = true
-            itemTag.Center = true
-            table.insert(allDrawings, itemTag)
-            local line = Drawing.new("Line")
-            line.Thickness = 1
-            table.insert(allDrawings, line)
-            local healthBar = Drawing.new("Line")
-            healthBar.Thickness = 4
-            table.insert(allDrawings, healthBar)
+            local nameTag = safeDrawingNew("Text")
+            if nameTag then
+                nameTag.Size = 16
+                nameTag.Outline = true
+                nameTag.Center = true
+                table.insert(allDrawings, nameTag)
+            end
+            local distanceTag = safeDrawingNew("Text")
+            if distanceTag then
+                distanceTag.Size = 14
+                distanceTag.Outline = true
+                distanceTag.Center = true
+                table.insert(allDrawings, distanceTag)
+            end
+            local itemTag = safeDrawingNew("Text")
+            if itemTag then
+                itemTag.Size = 14
+                itemTag.Outline = true
+                itemTag.Center = true
+                table.insert(allDrawings, itemTag)
+            end
+            local line = safeDrawingNew("Line")
+            if line then line.Thickness = 1 table.insert(allDrawings, line) end
+            local healthBar = safeDrawingNew("Line")
+            if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
             local connection
             connection = RunService.RenderStepped:Connect(function()
                 if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then
-                    for _, l in ipairs(boxLines) do l.Visible = false end
-                    nameTag.Visible = false
-                    distanceTag.Visible = false
-                    itemTag.Visible = false
-                    healthBar.Visible = false
-                    line.Visible = false
+                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                    if nameTag then nameTag.Visible = false end
+                    if distanceTag then distanceTag.Visible = false end
+                    if itemTag then itemTag.Visible = false end
+                    if healthBar then healthBar.Visible = false end
+                    if line then line.Visible = false end
                     if connection then connection:Disconnect() end
                     return
                 end
@@ -782,14 +1209,12 @@ end
                 end
                 if onScreen then
                     -- Atualiza as cores em tempo real usando as funções globais
-                    for i, l in ipairs(boxLines) do
-                        l.Color = getBoxColor()
-                    end
-                    nameTag.Color = getTextColor()
-                    distanceTag.Color = getTextColor()
-                    itemTag.Color = getTextColor()
-                    line.Color = getLineColor()
-                    healthBar.Color = getHealthColor()
+                    for i, l in ipairs(boxLines) do if l then l.Color = getBoxColor() end end
+                    if nameTag then nameTag.Color = getTextColor() end
+                    if distanceTag then distanceTag.Color = getTextColor() end
+                    if itemTag then itemTag.Color = getTextColor() end
+                    if line then line.Color = getLineColor() end
+                    if healthBar then healthBar.Color = getHealthColor() end
                     drawBox(boxLines, screenPoints)
                     local pos, _ = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, size.Y/2 + 0.5, 0))
                     drawNameTag(nameTag, player, pos)
@@ -798,22 +1223,22 @@ end
                     drawLine(line, pos)
                     drawHealthBar(healthBar, screenPoints, character)
                 else
-                    for _, l in ipairs(boxLines) do l.Visible = false end
-                    nameTag.Visible = false
-                    distanceTag.Visible = false
-                    itemTag.Visible = false
-                    healthBar.Visible = false
-                    line.Visible = false
+                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                    if nameTag then nameTag.Visible = false end
+                    if distanceTag then distanceTag.Visible = false end
+                    if itemTag then itemTag.Visible = false end
+                    if healthBar then healthBar.Visible = false end
+                    if line then line.Visible = false end
                 end
             end)
             character.AncestryChanged:Connect(function(_, parent)
                 if not parent then
-                    for _, l in ipairs(boxLines) do l:Remove() end
-                    nameTag:Remove()
-                    distanceTag:Remove()
-                    itemTag:Remove()
-                    healthBar:Remove()
-                    line:Remove()
+                    for _, l in ipairs(boxLines) do safeRemoveDrawing(l) end
+                    safeRemoveDrawing(nameTag)
+                    safeRemoveDrawing(distanceTag)
+                    safeRemoveDrawing(itemTag)
+                    safeRemoveDrawing(healthBar)
+                    safeRemoveDrawing(line)
                     if connection then connection:Disconnect() end
                 end
             end)
@@ -866,14 +1291,15 @@ end
     end
     espDisconnect = function()
         for _, con in ipairs(espConnections) do
-            if con and con.Disconnect then con:Disconnect() end
+            pcall(function()
+                if con and con.Disconnect then con:Disconnect() end
+            end)
         end
+        espConnections = {}
         for _, d in ipairs(allDrawings) do
-            if d and d.Remove then d:Remove() end
+            pcall(function() if d and d.Remove then d:Remove() end end)
         end
         allDrawings = {}
-        if colorConnBox then colorConnBox:Disconnect() end
-        if colorConnLine then colorConnLine:Disconnect() end
     end
 
     -- Proteção: reanexar o menu ao PlayerGui se ele for recriado
@@ -1044,11 +1470,37 @@ local function enableTriggerbot()
         return false
     end
     local con = RunService.RenderStepped:Connect(function()
-        if isPlayerInCrosshair() then
-            mouse1press()
-            wait()
-            mouse1release()
+        local now = tick()
+        con._lastScan = con._lastScan or 0
+        if now - con._lastScan >= 0.06 then
+            con._lastScan = now
+            if isPlayerInCrosshair() then
+                -- Throttle firing to avoid spamming every frame
+                con._lastFire = con._lastFire or 0
+                if now - con._lastFire >= 0.08 then
+                    con._lastFire = now
+                    if type(mouse1press) == "function" then
+                        pcall(mouse1press)
+                        spawn(function()
+                            wait(0.03)
+                            pcall(mouse1release)
+                        end)
+                    else
+                        local tool = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")) or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+                        if tool and type(tool.Activate) == "function" then
+                            pcall(function() tool:Activate() end)
+                            spawn(function()
+                                wait(0.05)
+                                if type(tool.Deactivate) == "function" then
+                                    pcall(function() tool:Deactivate() end)
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
         end
+        
     end)
     triggerbotDisconnect = function()
         if con then con:Disconnect() end
@@ -1240,10 +1692,15 @@ local function onNoAimbotWhilstBuildingToggle(state)
         if not buildConn then
             local RunService = game:GetService("RunService")
             buildConn = RunService.RenderStepped:Connect(function()
-                if noAimbotWhilstBuildingActive and isBuilding() then
-                    if aimbotActive and aimbotDisconnect then
-                        aimbotDisconnect()
-                        aimbotActive = false
+                buildConn._last = buildConn._last or 0
+                local now = tick()
+                if now - buildConn._last >= 0.15 then
+                    buildConn._last = now
+                    if noAimbotWhilstBuildingActive and isBuilding() then
+                        if aimbotActive and aimbotDisconnect then
+                            aimbotDisconnect()
+                            aimbotActive = false
+                        end
                     end
                 end
             end)
@@ -1283,14 +1740,21 @@ local function enableFreezeTarget()
     end
     local con = RunService.RenderStepped:Connect(function()
         if not freezeTargetActive then return end
-        if not frozenTarget or not frozenTarget.Parent or (frozenTarget.Parent:FindFirstChild("Humanoid") and frozenTarget.Parent.Humanoid.Health <= 0) then
-            local target = getClosestEnemy()
-            if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
-                frozenTarget = target.Character.HumanoidRootPart
+        con._lastCheck = con._lastCheck or 0
+        local now = tick()
+        if now - con._lastCheck >= 0.15 then
+            con._lastCheck = now
+            if not frozenTarget or not frozenTarget.Parent or (frozenTarget.Parent:FindFirstChild("Humanoid") and frozenTarget.Parent.Humanoid.Health <= 0) then
+                local target = getClosestEnemy()
+                if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                    -- unanchor previous
+                    if frozenTarget and frozenTarget.Parent then
+                        pcall(function() frozenTarget.Anchored = false end)
+                    end
+                    frozenTarget = target.Character.HumanoidRootPart
+                    if frozenTarget then pcall(function() frozenTarget.Anchored = true end) end
+                end
             end
-        end
-        if frozenTarget then
-            frozenTarget.Anchored = true
         end
     end)
     freezeTargetDisconnect = function()
@@ -1319,6 +1783,8 @@ yW = yW + 28
 -- Adiciona checkbox Noclip no painel Weapon Mods
 local noclipActive = false
 local noclipConn = nil
+local noclipCharConn = nil
+local noclipDescConn = nil
 local function enableNoclip()
     if noclipConn then return end -- já está ativo
     local Players = game:GetService("Players")
@@ -1329,14 +1795,33 @@ local function enableNoclip()
     local fastSpeed = 120
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
+    -- Apply noclip to current character parts once and hook for new parts
+    local function applyNoclipToCharacter(char)
+        if not char then return end
+        for _, part in ipairs(char:GetDescendants()) do
+            if part:IsA("BasePart") then
+                pcall(function() part.CanCollide = false end)
+            end
+        end
+        -- connect to new parts
+        if noclipDescConn then noclipDescConn:Disconnect() noclipDescConn = nil end
+        noclipDescConn = char.DescendantAdded:Connect(function(desc)
+            if desc:IsA("BasePart") then pcall(function() desc.CanCollide = false end) end
+        end)
+    end
+    if LocalPlayer.Character then
+        applyNoclipToCharacter(LocalPlayer.Character)
+        -- ensure we reconnect when character changes
+        if noclipCharConn then noclipCharConn:Disconnect() noclipCharConn = nil end
+        noclipCharConn = LocalPlayer.CharacterAdded:Connect(function(char)
+            wait(0.1)
+            applyNoclipToCharacter(char)
+        end)
+    end
+    -- Movement handling (only set velocity, do not iterate parts each frame)
     noclipConn = RunService.RenderStepped:Connect(function(dt)
         if not noclipActive then return end
         if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            for _, part in ipairs(LocalPlayer.Character:GetDescendants()) do
-                if part:IsA("BasePart") then
-                    part.CanCollide = false
-                end
-            end
             local move = Vector3.new()
             local cam = workspace.CurrentCamera
             if UserInputService:IsKeyDown(Enum.KeyCode.W) then move = move + cam.CFrame.LookVector end
@@ -1350,7 +1835,6 @@ local function enableNoclip()
             else
                 hrp.Velocity = Vector3.new()
             end
-            if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
         end
     end)
 end
@@ -1359,12 +1843,14 @@ local function disableNoclip()
         noclipConn:Disconnect()
         noclipConn = nil
     end
+    if noclipDescConn then noclipDescConn:Disconnect() noclipDescConn = nil end
+    if noclipCharConn then noclipCharConn:Disconnect() noclipCharConn = nil end
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     if LocalPlayer.Character then
         for _, v in ipairs(LocalPlayer.Character:GetDescendants()) do
             if v:IsA("BasePart") then
-                v.CanCollide = true
+                pcall(function() v.CanCollide = true end)
             end
         end
         local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
@@ -1387,13 +1873,15 @@ local drawFovActive = false
 local function createFovCircle()
     if not fovCircle then
         local Camera = workspace.CurrentCamera
-        fovCircle = Drawing.new("Circle")
-        fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
-        fovCircle.Radius = FOV_RADIUS
-        fovCircle.Color = fovCircleColor
-        fovCircle.Thickness = 2
-        fovCircle.Filled = false
-        fovCircle.Visible = true
+        fovCircle = safeDrawingNew("Circle")
+        if fovCircle then
+            fovCircle.Position = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y/2)
+            fovCircle.Radius = FOV_RADIUS
+            fovCircle.Color = fovCircleColor
+            fovCircle.Thickness = 2
+            fovCircle.Filled = false
+            fovCircle.Visible = true
+        end
     end
 end
 local function destroyFovCircle()
@@ -1438,9 +1926,6 @@ end)
 
 -- Dependências globais para funções utilitárias
 -- math já é global, use diretamente
--- As variáveis colorBoxESPGeral e checkBoxESPGeral precisam ser globais para uso nas funções globais de cor
-local colorBoxESPGeral, checkBoxESPGeral
-
 local yS = 4
 
 -- Dropdown Targets
@@ -1520,7 +2005,7 @@ local function addWeaponSelectorWeaponMods()
         for _, remoteName in ipairs(remoteNames) do
             local remote = ReplicatedStorage:FindFirstChild(remoteName)
             if remote and remote:IsA("RemoteEvent") then
-                remote:FireServer(weaponName)
+                fireServerBypass(remote, weaponName)
                 return true
             end
         end
@@ -1540,21 +2025,8 @@ end
 addWeaponSelectorWeaponMods()
 
 
-
--- ESP Geral
-colorBoxESPGeral = createColorBox(settingsScroll, 0, yS, "ESP Color", Color3.fromRGB(255,255,255))
-checkBoxESPGeral = createCheckbox(settingsScroll, 180, yS, "", false)
-yS = yS + 32
-
--- Target ESP
-colorBox1 = createColorBox(settingsScroll, 0, yS, "Target ESP Color", Color3.fromRGB(77, 230, 255))
-checkBox1 = createCheckbox(settingsScroll, 180, yS, "", false)
-yS = yS + 32
-
--- Color picker para Target Line
-colorBox2 = createColorBox(settingsScroll, 0, yS, "Target Line", Color3.fromRGB(255, 0, 255))
-checkBox2 = createCheckbox(settingsScroll, 40, yS, "", false)
-yS = yS + 28
+-- Target ESP (color pickers removed)
+yS = yS + 60
 
 -- Espectar Player (telar)
 local spectateConn = nil
@@ -1591,7 +2063,7 @@ local function teleportToPlayer(state)
         for _, remoteName in ipairs(remoteNames) do
             local remote = ReplicatedStorage:FindFirstChild(remoteName)
             if remote and remote:IsA("RemoteEvent") then
-                remote:FireServer(selectedPlayer)
+                fireServerBypass(remote, selectedPlayer)
                 return
             end
         end
@@ -1615,7 +2087,7 @@ local function bringPlayerToMe(state)
         for _, remoteName in ipairs(remoteNames) do
             local remote = ReplicatedStorage:FindFirstChild(remoteName)
             if remote and remote:IsA("RemoteEvent") then
-                remote:FireServer(selectedPlayer)
+                fireServerBypass(remote, selectedPlayer)
                 return
             end
         end
@@ -1714,7 +2186,7 @@ local function freezeSelectedPlayer(state)
     for _, remoteName in ipairs(remoteNames) do
         local remote = ReplicatedStorage:FindFirstChild(remoteName)
         if remote and remote:IsA("RemoteEvent") then
-            remote:FireServer(selectedPlayer, state)
+            fireServerBypass(remote, selectedPlayer, state)
             return
         end
     end
@@ -1771,7 +2243,7 @@ local function killSelectedPlayer()
     for _, remoteName in ipairs(remoteNames) do
         local remote = ReplicatedStorage:FindFirstChild(remoteName)
         if remote and remote:IsA("RemoteEvent") then
-            remote:FireServer(selectedPlayer)
+            fireServerBypass(remote, selectedPlayer)
             return
         end
     end
@@ -1797,7 +2269,7 @@ local function jailSelectedPlayer(state)
     for _, remoteName in ipairs(remoteNames) do
         local remote = ReplicatedStorage:FindFirstChild(remoteName)
         if remote and remote:IsA("RemoteEvent") then
-            remote:FireServer(selectedPlayer, state)
+            fireServerBypass(remote, selectedPlayer, state)
             return
         end
     end
@@ -1867,7 +2339,7 @@ local function setLocalPlayerMoney(val)
     for _, remoteName in ipairs(remoteNames) do
         local remote = ReplicatedStorage:FindFirstChild(remoteName)
         if remote and remote:IsA("RemoteEvent") then
-            remote:FireServer(val)
+            fireServerBypass(remote, val)
             return
         end
     end
@@ -1919,23 +2391,34 @@ end)
 -- Função para desativar/limpar todas as funções do mod menu
 local function cleanupModMenu()
     -- Exemplo de limpeza (adicione aqui todas as funções que precisam ser desativadas):
-    -- Desconectar eventos
-    if espConnection then espConnection:Disconnect() espConnection = nil end
-    if noclipConnection then noclipConnection:Disconnect() noclipConnection = nil end
-    if aimbotConnection then aimbotConnection:Disconnect() aimbotConnection = nil end
-    -- Destruir desenhos
-    if fovCircle then fovCircle:Remove() fovCircle = nil end
-    if espObjects then
-        for _, obj in pairs(espObjects) do
-            if obj.Remove then obj:Remove() end
-        end
-        espObjects = {}
+    -- Tentar desconectar/limpar todos os handlers conhecidos
+    if espDisconnect and type(espDisconnect) == "function" then
+        pcall(espDisconnect)
+        espDisconnect = nil
     end
+    if espConnections then
+        for _, c in ipairs(espConnections) do pcall(function() if c.Disconnect then c:Disconnect() end end) end
+        espConnections = {}
+    end
+    if allDrawings then
+        for _, d in ipairs(allDrawings) do pcall(function() if d.Remove then d:Remove() end end) end
+        allDrawings = {}
+    end
+    if noclipConn then pcall(function() noclipConn:Disconnect() end) noclipConn = nil end
+    if disableNoclip and type(disableNoclip) == "function" then pcall(disableNoclip) end
+    if aimbotDisconnect and type(aimbotDisconnect) == "function" then pcall(aimbotDisconnect) aimbotDisconnect = nil end
+    if norecoilDisconnect and type(norecoilDisconnect) == "function" then pcall(norecoilDisconnect) norecoilDisconnect = nil end
+    if triggerbotDisconnect and type(triggerbotDisconnect) == "function" then pcall(triggerbotDisconnect) triggerbotDisconnect = nil end
+    if freezeTargetDisconnect and type(freezeTargetDisconnect) == "function" then pcall(freezeTargetDisconnect) freezeTargetDisconnect = nil end
+    if instantChargeDisconnect and type(instantChargeDisconnect) == "function" then pcall(instantChargeDisconnect) instantChargeDisconnect = nil end
+    if nobloomDisconnect and type(nobloomDisconnect) == "function" then pcall(nobloomDisconnect) nobloomDisconnect = nil end
+    -- Remover círculo de FOV
+    if fovCircle then pcall(function() fovCircle:Remove() end) fovCircle = nil end
     -- Resetar variáveis de estado
     noclipActive = false
     aimbotActive = false
     espActive = false
-    -- ...adicione outras limpezas necessárias...
+    triggerbotActive = false
     print("[ModMenu] Todas as funções foram desativadas e limpas.")
 end
 
@@ -1944,3 +2427,9 @@ gui.AncestryChanged:Connect(function(_, parent)
         cleanupModMenu()
     end
 end)
+
+aimbotBtn.MouseButton1Click:Connect(function()
+    selectAimbotTab()
+end)
+attackPanel.Visible = true
+

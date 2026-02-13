@@ -1,2 +1,0 @@
--- Sample content from the original file
--- This will be replaced with the optimized version.

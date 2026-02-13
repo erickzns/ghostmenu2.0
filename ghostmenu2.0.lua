@@ -1,24 +1,33 @@
--- Example content of ghostmenu2.0.lua for reference only. Actual code will be created based on optimizations and features requested.
+-- Ghost Menu 2.0
 
--- Define the main UI function for Ghost Menu
-function initializeGhostMenu()
-    -- Initialize optimized variables and settings
-    local menuItems = {}
-    local screenWidth = 800
-    local screenHeight = 600
+local menu_open = false
 
-    -- Optimized function to draw the menu
-    function drawMenu()
-        -- Code to render the UI
+function open_menu()
+    menu_open = not menu_open
+    if menu_open then
+        print('Menu opened')
+    else
+        print('Menu closed')
     end
-
-    -- Event handling for user interactions
-    function onUserInput(input)
-        -- Code to handle user input
-    end
-
-    -- Add new feature optimizations
-    -- Additional function definitions
 end
 
-initializeGhostMenu()
+-- Bind the INSERT key to the open_menu function
+
+function on_key_press(key)
+    if key == "INSERT" then
+        open_menu()
+    end
+end
+
+-- Other menu functionalities can be added below
+
+-- Example: Display options when the menu is open
+function display_options()
+    if menu_open then
+        print('Option 1: ...')
+        print('Option 2: ...')
+        -- Add more options as needed
+    end
+end
+
+-- Call display_options in a loop or in relevant parts of your code

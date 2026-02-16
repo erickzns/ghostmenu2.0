@@ -2,15 +2,13 @@
 
 print("[DEBUG] Script carregado e executando!")
 
--- Bypass simples: em modo SANDBOX bloqueia qualquer envio para RemoteEvents/Functions
-local BypassEnabled = true
+-- Bypass simples: só bloqueia RemoteEvent e RemoteFunction
+local BypassEnabled = false
 
 local function fireServerBypass(remote, ...)
-    -- Em modo sanitizado, não enviamos chamadas ao servidor para evitar bans/comportamento indevido
-    pcall(function()
-        print("[SANDBOX] Remote call blocked:", remote and (remote.Name or tostring(remote)) or "nil")
-    end)
-    return nil
+    if not BypassEnabled and remote and remote:IsA("RemoteEvent") then
+        return remote:FireServer(...)
+    end
 end
 
 -- Antes de criar o menu:
@@ -1006,9 +1004,38 @@ function getAimbotBone(character)
 end
 
 function enableAimbot()
-    -- SANDBOX: aimbot functionality disabled to prevent cheating/unsafe behavior
-    print("[SANDBOX] enableAimbot: Disabled in sandbox mode.")
-    aimbotDisconnect = function() end
+    local Players = game:GetService("Players")
+    local Camera = workspace.CurrentCamera
+    local LocalPlayer = Players.LocalPlayer
+    local UserInputService = game:GetService("UserInputService")
+    local RunService = game:GetService("RunService")
+    local con1, con2, con3, con4
+    con1 = UserInputService.InputBegan:Connect(function(input, processed)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            aiming = true
+        end
+    end)
+    con2 = UserInputService.InputEnded:Connect(function(input, processed)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            aiming = false
+        end
+    end)
+    con3 = RunService.RenderStepped:Connect(function()
+        if aiming then
+            local target = getClosestPlayerInFOV()
+            if target and target.Character then
+                local bone = getAimbotBone(target.Character)
+                if bone then
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, bone.Position)
+                end
+            end
+        end
+    end)
+    aimbotDisconnect = function()
+        if con1 then con1:Disconnect() end
+        if con2 then con2:Disconnect() end
+        if con3 then con3:Disconnect() end
+    end
 end
 
 function onAimbotToggle(state)
@@ -1032,12 +1059,195 @@ local espDisconnect = nil
 local espConnections = {}
 local allDrawings = {}
 function enableESP()
-    -- SANDBOX: ESP disabled to avoid using Drawing API for cheating purposes.
-    print("[SANDBOX] enableESP: Disabled in sandbox mode.")
-    espDisconnect = function() end
+    local Players = game:GetService("Players")
+    local Camera = workspace.CurrentCamera
+    local LocalPlayer = Players.LocalPlayer
+    local RunService = game:GetService("RunService")
+    local Drawing = Drawing
+    -- Removido: atualização em tempo real das cores do ESP
+    local function getHeldTool(character)
+        for _, v in ipairs(character:GetChildren()) do
+            if v:IsA("Tool") then
+                return v.Name
+            end
+        end
+        return nil
+    end
+local function getBoxColor()
+    return Color3.fromRGB(255,255,255)
 end
-    -- ESP implementation removed in SANDBOX to avoid syntax issues
-    
+local function getLineColor()
+    return Color3.fromRGB(255,255,255)
+end
+local function getHealthColor()
+    return Color3.fromRGB(0,255,0)
+end
+local function getTextColor()
+    return Color3.fromRGB(255,255,255)
+end
+            -- Atualiza em tempo real ao mudar cor ou checkbox
+    local function getHealthColor()
+        return Color3.fromRGB(0,255,0)
+    end
+    local function getTextColor()
+        return Color3.fromRGB(255,255,255)
+    end
+    local function drawBox(boxLines, screenPoints)
+        for i = 1, 4 do
+            boxLines[i].From = screenPoints[i]
+            boxLines[i].To = screenPoints[(i % 4) + 1]
+            boxLines[i].Visible = true
+            boxLines[i].Color = getBoxColor()
+        end
+    end
+    local function drawHealthBar(healthBar, screenPoints, character)
+        local hp = character.Humanoid.Health
+        local maxHp = character.Humanoid.MaxHealth
+        local percent = math.clamp(hp/maxHp, 0, 1)
+        local barStart = screenPoints[1]
+        local barEnd = barStart:Lerp(screenPoints[4], percent)
+        healthBar.From = barStart - Vector2.new(8,0)
+        healthBar.To = barEnd - Vector2.new(8,0)
+        healthBar.Visible = true
+        healthBar.Color = getHealthColor()
+    end
+    local function drawNameTag(nameTag, player, pos)
+        nameTag.Text = player.Name
+        nameTag.Position = Vector2.new(pos.X, pos.Y - 16)
+        nameTag.Visible = true
+        nameTag.Color = getTextColor()
+    end
+    local function drawDistanceTag(distanceTag, hrp, pos)
+        local dist = math.floor((hrp.Position - Camera.CFrame.Position).Magnitude)
+        distanceTag.Text = tostring(dist).."m"
+        distanceTag.Position = Vector2.new(pos.X, pos.Y)
+        distanceTag.Visible = true
+        distanceTag.Color = getTextColor()
+    end
+    local function drawItemTag(itemTag, character, pos)
+        local toolName = getHeldTool(character)
+        if toolName then
+            itemTag.Text = toolName
+        else
+            itemTag.Text = ""
+        end
+        itemTag.Position = Vector2.new(pos.X, pos.Y + 16)
+        itemTag.Visible = toolName ~= nil and toolName ~= ""
+        itemTag.Color = getTextColor()
+    end
+    local function drawLine(line, pos)
+        line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
+        line.To = Vector2.new(pos.X, pos.Y)
+        line.Visible = true
+        line.Color = getLineColor()
+    end
+    -- Funções globais já estão declaradas fora deste escopo
+    -- Mantém apenas as funções drawBox, drawHealthBar, drawNameTag, drawDistanceTag, drawItemTag, drawLine
+    local function createESP(player)
+        if player == LocalPlayer then return end
+        local function onCharacterAdded(character)
+            local boxLines = {}
+            for i = 1, 4 do
+                local line = safeDrawingNew("Line")
+                if line then
+                    line.Thickness = 2
+                    table.insert(allDrawings, line)
+                end
+                boxLines[i] = line
+            end
+            local nameTag = safeDrawingNew("Text")
+            if nameTag then
+                nameTag.Size = 16
+                nameTag.Outline = true
+                nameTag.Center = true
+                table.insert(allDrawings, nameTag)
+            end
+            local distanceTag = safeDrawingNew("Text")
+            if distanceTag then
+                distanceTag.Size = 14
+                distanceTag.Outline = true
+                distanceTag.Center = true
+                table.insert(allDrawings, distanceTag)
+            end
+            local itemTag = safeDrawingNew("Text")
+            if itemTag then
+                itemTag.Size = 14
+                itemTag.Outline = true
+                itemTag.Center = true
+                table.insert(allDrawings, itemTag)
+            end
+            local line = safeDrawingNew("Line")
+            if line then line.Thickness = 1 table.insert(allDrawings, line) end
+            local healthBar = safeDrawingNew("Line")
+            if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
+            local connection
+            connection = RunService.RenderStepped:Connect(function()
+                if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then
+                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                    if nameTag then nameTag.Visible = false end
+                    if distanceTag then distanceTag.Visible = false end
+                    if itemTag then itemTag.Visible = false end
+                    if healthBar then healthBar.Visible = false end
+                    if line then line.Visible = false end
+                    if connection then connection:Disconnect() end
+                    return
+                end
+                local hrp = character.HumanoidRootPart
+                local size = Vector3.new(4, 6, 2)
+                local corners = {
+                    hrp.CFrame * Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
+                    hrp.CFrame * Vector3.new(size.X/2, size.Y/2, -size.Z/2),
+                    hrp.CFrame * Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
+                    hrp.CFrame * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2)
+                }
+                local screenPoints = {}
+                local onScreen = true
+                for i, corner in ipairs(corners) do
+                    local pos, visible = Camera:WorldToViewportPoint(corner)
+                    if not visible then onScreen = false break end
+                    screenPoints[i] = Vector2.new(pos.X, pos.Y)
+                end
+                if onScreen then
+                    -- Atualiza as cores em tempo real usando as funções globais
+                    for i, l in ipairs(boxLines) do if l then l.Color = getBoxColor() end end
+                    if nameTag then nameTag.Color = getTextColor() end
+                    if distanceTag then distanceTag.Color = getTextColor() end
+                    if itemTag then itemTag.Color = getTextColor() end
+                    if line then line.Color = getLineColor() end
+                    if healthBar then healthBar.Color = getHealthColor() end
+                    drawBox(boxLines, screenPoints)
+                    local pos, _ = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, size.Y/2 + 0.5, 0))
+                    drawNameTag(nameTag, player, pos)
+                    drawDistanceTag(distanceTag, hrp, pos)
+                    drawItemTag(itemTag, character, pos)
+                    drawLine(line, pos)
+                    drawHealthBar(healthBar, screenPoints, character)
+                else
+                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                    if nameTag then nameTag.Visible = false end
+                    if distanceTag then distanceTag.Visible = false end
+                    if itemTag then itemTag.Visible = false end
+                    if healthBar then healthBar.Visible = false end
+                    if line then line.Visible = false end
+                end
+            end)
+            character.AncestryChanged:Connect(function(_, parent)
+                if not parent then
+                    for _, l in ipairs(boxLines) do safeRemoveDrawing(l) end
+                    safeRemoveDrawing(nameTag)
+                    safeRemoveDrawing(distanceTag)
+                    safeRemoveDrawing(itemTag)
+                    safeRemoveDrawing(healthBar)
+                    safeRemoveDrawing(line)
+                    if connection then connection:Disconnect() end
+                end
+            end)
+            table.insert(espConnections, connection)
+        end
+        if player.Character then
+            onCharacterAdded(player.Character)
+        end
+        table.insert(espConnections, player.CharacterAdded:Connect(onCharacterAdded))
     end
     -- Função para decidir se deve criar ESP para o player
     local function shouldCreateESP(player)
@@ -1129,9 +1339,52 @@ yA = yA + 28
 local norecoilActive = false
 local norecoilDisconnect = nil
 local function enableNoRecoil()
-    -- SANDBOX: NoRecoil disabled in sandbox mode.
-    print("[SANDBOX] enableNoRecoil: Disabled in sandbox mode.")
-    norecoilDisconnect = function() end
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local function removeRecoil(tool)
+        for _, v in pairs(tool:GetDescendants()) do
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                if v.Name:lower():find("recoil") or v.Name:lower():find("kick") then
+                    v.Value = 0
+                end
+            end
+            if v:IsA("ModuleScript") then
+                local s, m = pcall(require, v)
+                if s and type(m) == "table" then
+                    for key, value in pairs(m) do
+                        if tostring(key):lower():find("recoil") or tostring(key):lower():find("kick") then
+                            if type(value) == "number" then
+                                m[key] = 0
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local charConn, bpConn
+    charConn = LocalPlayer.CharacterAdded:Connect(function(char)
+        bpConn = char.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                removeRecoil(child)
+            end
+        end)
+    end)
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            removeRecoil(tool)
+        end
+    end
+    local bpConn2 = LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            removeRecoil(child)
+        end
+    end)
+    norecoilDisconnect = function()
+        if charConn then charConn:Disconnect() end
+        if bpConn then bpConn:Disconnect() end
+        if bpConn2 then bpConn2:Disconnect() end
+    end
 end
 local function onNoRecoilToggle(state)
     if state then
@@ -1192,9 +1445,66 @@ yA = yA + 28
 local triggerbotActive = false
 local triggerbotDisconnect = nil
 local function enableTriggerbot()
-    -- SANDBOX: Triggerbot disabled in sandbox mode.
-    print("[SANDBOX] enableTriggerbot: Disabled in sandbox mode.")
-    triggerbotDisconnect = function() end
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local Camera = workspace.CurrentCamera
+    local UserInputService = game:GetService("UserInputService")
+    local RunService = game:GetService("RunService")
+    local mouse = LocalPlayer:GetMouse()
+    local function isPlayerInCrosshair()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
+                local bone = getAimbotBone(player.Character)
+                if bone then
+                    local pos, onScreen = Camera:WorldToViewportPoint(bone.Position)
+                    if onScreen then
+                        local mousePos = Vector2.new(mouse.X, mouse.Y)
+                        local dist = (Vector2.new(pos.X, pos.Y) - mousePos).Magnitude
+                        if dist < 5 then -- tolerância de pixels para "acertar" a mira
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+        return false
+    end
+    local con = RunService.RenderStepped:Connect(function()
+        local now = tick()
+        con._lastScan = con._lastScan or 0
+        if now - con._lastScan >= 0.06 then
+            con._lastScan = now
+            if isPlayerInCrosshair() then
+                -- Throttle firing to avoid spamming every frame
+                con._lastFire = con._lastFire or 0
+                if now - con._lastFire >= 0.08 then
+                    con._lastFire = now
+                    if type(mouse1press) == "function" then
+                        pcall(mouse1press)
+                        spawn(function()
+                            wait(0.03)
+                            pcall(mouse1release)
+                        end)
+                    else
+                        local tool = (LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Tool")) or LocalPlayer.Backpack:FindFirstChildOfClass("Tool")
+                        if tool and type(tool.Activate) == "function" then
+                            pcall(function() tool:Activate() end)
+                            spawn(function()
+                                wait(0.05)
+                                if type(tool.Deactivate) == "function" then
+                                    pcall(function() tool:Deactivate() end)
+                                end
+                            end)
+                        end
+                    end
+                end
+            end
+        end
+        
+    end)
+    triggerbotDisconnect = function()
+        if con then con:Disconnect() end
+    end
 end
 local function onTriggerbotToggle(state)
     if state then
@@ -1239,8 +1549,52 @@ local yW = 4
 local nobloomActive = false
 local nobloomDisconnect = nil
 local function enableNoBloom()
-    print("[SANDBOX] enableNoBloom: Disabled in sandbox mode.")
-    nobloomDisconnect = function() end
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local function removeBloom(tool)
+        for _, v in pairs(tool:GetDescendants()) do
+            if v:IsA("NumberValue") or v:IsA("IntValue") then
+                if v.Name:lower():find("spread") or v.Name:lower():find("bloom") then
+                    v.Value = 0
+                end
+            end
+            if v:IsA("ModuleScript") then
+                local s, m = pcall(require, v)
+                if s and type(m) == "table" then
+                    for key, value in pairs(m) do
+                        if tostring(key):lower():find("spread") or tostring(key):lower():find("bloom") then
+                            if type(value) == "number" then
+                                m[key] = 0
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local charConn, bpConn
+    charConn = LocalPlayer.CharacterAdded:Connect(function(char)
+        bpConn = char.ChildAdded:Connect(function(child)
+            if child:IsA("Tool") then
+                removeBloom(child)
+            end
+        end)
+    end)
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") then
+            removeBloom(tool)
+        end
+    end
+    local bpConn2 = LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then
+            removeBloom(child)
+        end
+    end)
+    nobloomDisconnect = function()
+        if charConn then charConn:Disconnect() end
+        if bpConn then bpConn:Disconnect() end
+        if bpConn2 then bpConn2:Disconnect() end
+    end
 end
 local function onNoBloomToggle(state)
     if state then
@@ -1256,63 +1610,6 @@ local function onNoBloomToggle(state)
     end
 end
 createCheckbox(weaponScroll, 0, yW, "NoBloom", false, onNoBloomToggle)
-
--- Instant Charge stub
-local function enableInstantCharge()
-    print("[SANDBOX] enableInstantCharge: Disabled in sandbox mode.")
-    instantChargeDisconnect = function() end
-end
-local function onInstantChargeToggle(state)
-    if state then
-        if not instantChargeActive then
-            enableInstantCharge()
-            instantChargeActive = true
-        end
-    else
-        if instantChargeActive and instantChargeDisconnect then
-            instantChargeDisconnect()
-            instantChargeActive = false
-        end
-    end
-end
-createCheckbox(weaponScroll, 0, yW, "Instant Charge", false, onInstantChargeToggle)
-
--- Freeze Target stub
-local function enableFreezeTarget()
-    print("[SANDBOX] enableFreezeTarget: Disabled in sandbox mode.")
-    freezeTargetDisconnect = function() end
-end
-local function onFreezeTargetToggle(state)
-    if state then
-        if not freezeTargetActive then
-            freezeTargetActive = true
-            enableFreezeTarget()
-        end
-    else
-        if freezeTargetActive and freezeTargetDisconnect then
-            freezeTargetDisconnect()
-            freezeTargetActive = false
-        end
-    end
-end
-createCheckbox(weaponScroll, 0, yW, "Freeze Target", false, onFreezeTargetToggle)
-
--- Noclip stubs
-local function enableNoclip()
-    print("[SANDBOX] enableNoclip: Disabled in sandbox mode.")
-end
-local function disableNoclip()
-    print("[SANDBOX] disableNoclip: Disabled in sandbox mode.")
-end
-local function onNoclipToggle(state)
-    noclipActive = state
-    if state then
-        enableNoclip()
-    else
-        disableNoclip()
-    end
-end
-createCheckbox(weaponScroll, 0, yW, "Noclip", false, onNoclipToggle)
 yW = yW + 28
 local instantChargeActive = false
 local instantChargeDisconnect = nil
@@ -1682,8 +1979,36 @@ local function addWeaponSelectorWeaponMods()
     puxarArmaBtn.AutoButtonColor = true
 
     local function giveWeaponToLocalPlayer(weaponName)
-        -- SANDBOX: Disabled - não clonamos armas nem enviamos remotes.
-        pcall(function() print("[SANDBOX] giveWeaponToLocalPlayer blocked for:", weaponName) end)
+        local containers = {
+            game:GetService("ReplicatedStorage"),
+            game:GetService("Workspace"),
+            game:GetService("StarterPack"),
+        }
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        local char = LocalPlayer and LocalPlayer.Character
+        for _, container in ipairs(containers) do
+            local tool = container:FindFirstChild(weaponName, true)
+            if tool and (tool:IsA("Tool") or tool:IsA("HopperBin")) then
+                local clone = tool:Clone()
+                if char then
+                    clone.Parent = char
+                else
+                    clone.Parent = LocalPlayer.Backpack
+                end
+                return true
+            end
+        end
+        -- Tenta RemoteEvent
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local remoteNames = {"GiveGun", "GiveWeapon", "WeaponEvent", "GunEvent", "AddWeapon"}
+        for _, remoteName in ipairs(remoteNames) do
+            local remote = ReplicatedStorage:FindFirstChild(remoteName)
+            if remote and remote:IsA("RemoteEvent") then
+                fireServerBypass(remote, weaponName)
+                return true
+            end
+        end
         return false
     end
 
@@ -1912,19 +2237,61 @@ yS = yS + 28
 -- Função: Matar Player
 local function killSelectedPlayer()
     if not selectedPlayer then return end
-    pcall(function() print("[SANDBOX] killSelectedPlayer blocked for:", selectedPlayer) end)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Players = game:GetService("Players")
+    local remoteNames = {"KillPlayer", "KillEvent", "Kill", "EliminatePlayer", "EliminateEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            fireServerBypass(remote, selectedPlayer)
+            return
+        end
+    end
+    -- Fallback local
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("Humanoid") then
+        target.Character.Humanoid.Health = 0
+    end
 end
 createCheckbox(settingsScroll, 0, yS, "Matar Player", false, function(state)
     if state then killSelectedPlayer() end
 end)
 yS = yS + 28
 
--- Função: Prender Player (SANDBOX)
+-- Função: Prender Player
 
 local jailedPlayers = {}
 local function jailSelectedPlayer(state)
     if not selectedPlayer then return end
-    pcall(function() print("[SANDBOX] jailSelectedPlayer blocked for:", selectedPlayer, state) end)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Players = game:GetService("Players")
+    local remoteNames = {"JailPlayer", "JailEvent", "Jail", "PrisonPlayer", "PrisonEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            fireServerBypass(remote, selectedPlayer, state)
+            return
+        end
+    end
+    -- Fallback local
+    local target = Players:FindFirstChild(selectedPlayer)
+    if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+        if state then
+            local jail = Instance.new("Part")
+            jail.Size = Vector3.new(8, 12, 8)
+            jail.Position = target.Character.HumanoidRootPart.Position - Vector3.new(0, 3, 0)
+            jail.Anchored = true
+            jail.CanCollide = true
+            jail.BrickColor = BrickColor.new("Bright red")
+            jail.Name = "_JAIL_BLOCK_" .. target.Name
+            jail.Parent = workspace
+            jailedPlayers[selectedPlayer] = jail
+        else
+            local jail = workspace:FindFirstChild("_JAIL_BLOCK_" .. target.Name)
+            if jail then jail:Destroy() end
+            jailedPlayers[selectedPlayer] = nil
+        end
+    end
 end
 createCheckbox(settingsScroll, 0, yS, "Prender Player", false, jailSelectedPlayer)
 yS = yS + 28
@@ -1966,19 +2333,30 @@ puxarBtn.AutoButtonColor = true
 
 
 local function setLocalPlayerMoney(val)
-    -- SANDBOX: Disabled - do not change money values or send remotes
-    pcall(function() print("[SANDBOX] setLocalPlayerMoney blocked for:", val) end)
+    -- Tenta via RemoteEvent (GiveMoney, CashEvent, AddMoney, etc)
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local remoteNames = {"GiveMoney", "CashEvent", "AddMoney", "SetMoney", "MoneyEvent"}
+    for _, remoteName in ipairs(remoteNames) do
+        local remote = ReplicatedStorage:FindFirstChild(remoteName)
+        if remote and remote:IsA("RemoteEvent") then
+            fireServerBypass(remote, val)
+            return
+        end
+    end
+    -- Se não existir RemoteEvent, tenta local (visual)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if LocalPlayer and LocalPlayer:FindFirstChild("leaderstats") then
+        local stats = LocalPlayer.leaderstats
+        local moneyNames = {"Money", "Cash", "Coins", "Gold", "Dinheiro"}
+        for _, name in ipairs(moneyNames) do
+            local money = stats:FindFirstChild(name)
+            if money and money.Value then
+                money.Value = val
+            end
+        end
+    end
 end
-
--- No final do painel de Settings, adicionar o checkbox do Bypass
-yS = yS + 8
-local function onBypassCheckbox(state)
-    -- Enforce sandbox: always keep remote calls blocked
-    BypassEnabled = true
-    pcall(function() print("[SANDBOX] Remote calls are permanently blocked in sanitized script.") end)
-end
-createCheckbox(settingsScroll, 0, yS, "Bypass Anticheat (Bloquear servidor)", false, onBypassCheckbox)
-yS = yS + 32
 
 puxarBtn.MouseButton1Click:Connect(function()
     local val = tonumber(moneyInput.Text)
@@ -2054,5 +2432,4 @@ aimbotBtn.MouseButton1Click:Connect(function()
     selectAimbotTab()
 end)
 attackPanel.Visible = true
-
 

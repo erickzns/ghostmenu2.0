@@ -746,7 +746,6 @@ spawn(function()
                         copy.Parent = settingsScroll
                     end
                 end
-                print("[ModMenu] Restaurado conteúdo do Settings")
             end
         end)
         wait(1)
@@ -858,6 +857,8 @@ if title and title.Parent then
 end
 local dragging, dragInput, dragStart, startPos
 local UIS = game:GetService("UserInputService")
+local DEBUG_MENU = false
+local insertDebounce = false
 title.InputBegan:Connect(function(input)
     if input.UserInputType == Enum.UserInputType.MouseButton1 then
         dragging = true
@@ -886,12 +887,18 @@ end)
 UIS.InputBegan:Connect(function(input, processed)
     if processed then return end
     if input.KeyCode == Enum.KeyCode.Insert then
-        print("[DEBUG] Tecla Insert pressionada!")
+        if insertDebounce then return end
+        insertDebounce = true
+        spawn(function()
+            wait(0.25)
+            insertDebounce = false
+        end)
+        if DEBUG_MENU then print("[DEBUG] Tecla Insert pressionada!") end
         if main and main.Parent then
-            print("[DEBUG] main existe e tem Parent!")
+            if DEBUG_MENU then print("[DEBUG] main existe e tem Parent!") end
             if main.Visible then hideMenu() else showMenu() end
         else
-            print("[DEBUG] main ou main.Parent não existem!")
+            if DEBUG_MENU then print("[DEBUG] main ou main.Parent não existem!") end
         end
     end
 end)
@@ -2456,8 +2463,474 @@ end
 addWeaponSelectorWeaponMods()
 
 
+-- Skin Changer para armas/facas
+do
+    local skinPresets = {
+        {name = "Default", type = "default"},
+        {name = "Black", type = "color", color = Color3.fromRGB(20,20,20)},
+        {name = "Gold", type = "color", color = Color3.fromRGB(212,175,55)},
+        {name = "Red", type = "color", color = Color3.fromRGB(200,40,40)},
+        {name = "Blue", type = "color", color = Color3.fromRGB(40,140,200)},
+        {name = "Custom Texture", type = "texture"},
+    }
+
+    local presetNames = {}
+    for _, s in ipairs(skinPresets) do table.insert(presetNames, s.name) end
+
+    local skinChoice = "Default"
+    local textureInput = nil
+
+    local skinDropdown, getSkinSelected = createDropdown(weaponScroll, 0, yW, "Skin Preset", presetNames, 1, function(i, val)
+        skinChoice = val
+    end)
+    yW = yW + 36
+
+    -- TextBox para TextureId custom
+    local texLabel = Instance.new("TextLabel")
+    texLabel.Size = UDim2.new(0, 120, 0, 20)
+    texLabel.Position = UDim2.new(0, 0, 0, yW)
+    texLabel.BackgroundTransparency = 1
+    texLabel.Text = "TextureId (opcional)"
+    texLabel.Font = Enum.Font.Gotham
+    texLabel.TextSize = 14
+    texLabel.TextColor3 = Color3.fromRGB(220,220,230)
+    texLabel.TextXAlignment = Enum.TextXAlignment.Left
+    texLabel.Parent = weaponScroll
+
+    textureInput = Instance.new("TextBox")
+    textureInput.Size = UDim2.new(0, 160, 0, 24)
+    textureInput.Position = UDim2.new(0, 124, 0, yW-2)
+    textureInput.BackgroundColor3 = Color3.fromRGB(24,24,28)
+    textureInput.BorderSizePixel = 0
+    textureInput.Text = ""
+    textureInput.PlaceholderText = "rbxassetid://... or URL"
+    textureInput.Font = Enum.Font.Gotham
+    textureInput.TextSize = 14
+    textureInput.TextColor3 = Color3.fromRGB(180,180,200)
+    textureInput.Parent = weaponScroll
+    yW = yW + 36
+
+    -- Dropdown para selecionar arma alvo
+    local weaponNames = getWeaponsList()
+    local weaponTarget = ""
+    local weaponDropdown2, getWeaponTarget = createDropdown(weaponScroll, 0, yW, "Target Weapon", weaponNames, 1, function(i, val)
+        weaponTarget = val
+    end)
+    yW = yW + 36
+
+    local applyBtn = Instance.new("TextButton")
+    applyBtn.Size = UDim2.new(0, 120, 0, 28)
+    applyBtn.Position = UDim2.new(0, 0, 0, yW)
+    applyBtn.BackgroundColor3 = Color3.fromRGB(10,160,220)
+    applyBtn.TextColor3 = Color3.fromRGB(0,0,0)
+    applyBtn.Text = "Apply Skin"
+    applyBtn.Font = Enum.Font.GothamBold
+    applyBtn.TextSize = 14
+    applyBtn.Parent = weaponScroll
+
+    local applyAllBtn = Instance.new("TextButton")
+    applyAllBtn.Size = UDim2.new(0, 120, 0, 28)
+    applyAllBtn.Position = UDim2.new(0, 132, 0, yW)
+    applyAllBtn.BackgroundColor3 = Color3.fromRGB(40,40,44)
+    applyAllBtn.TextColor3 = Color3.fromRGB(200,200,200)
+    applyAllBtn.Text = "Apply To All"
+    applyAllBtn.Font = Enum.Font.Gotham
+    applyAllBtn.TextSize = 14
+    applyAllBtn.Parent = weaponScroll
+    yW = yW + 36
+
+    local function findToolInstancesByName(name)
+        local results = {}
+        local containers = {game:GetService("ReplicatedStorage"), game:GetService("Workspace"), game:GetService("StarterPack")}
+        for _, c in ipairs(containers) do
+            for _, obj in ipairs(c:GetDescendants()) do
+                if obj and (obj:IsA("Tool") or obj:IsA("HopperBin")) and obj.Name == name then
+                    table.insert(results, obj)
+                end
+            end
+        end
+        -- também checar Backpack e Character locais
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        if LocalPlayer then
+            for _, obj in ipairs(LocalPlayer.Backpack:GetChildren()) do
+                if (obj:IsA("Tool") or obj:IsA("HopperBin")) and obj.Name == name then table.insert(results, obj) end
+            end
+            if LocalPlayer.Character then
+                for _, obj in ipairs(LocalPlayer.Character:GetChildren()) do
+                    if (obj:IsA("Tool") or obj:IsA("HopperBin")) and obj.Name == name then table.insert(results, obj) end
+                end
+            end
+        end
+        return results
+    end
+
+    local localClones = {}
+    local Players = game:GetService("Players")
+
+    local function applySkinToTool(tool, preset)
+        if not tool then return end
+        pcall(function()
+            backupTool(tool)
+            -- aplicar cor simples
+            if preset.type == "color" and preset.color then
+                for _, d in ipairs(tool:GetDescendants()) do
+                    if d:IsA("BasePart") then
+                        pcall(function() d.Color = preset.color end)
+                    end
+                    if d:IsA("MeshPart") then pcall(function() d.Color = preset.color end) end
+                end
+            elseif preset.type == "texture" then
+                local tex = textureInput and textureInput.Text or nil
+                if tex and tex ~= "" then
+                    for _, d in ipairs(tool:GetDescendants()) do
+                        if d:IsA("SpecialMesh") then pcall(function() d.TextureId = tex end) end
+                        if d:IsA("MeshPart") then pcall(function() d.TextureID = tex end) end
+                        if d:IsA("Decal") or d:IsA("Texture") then pcall(function() d.Texture = tex end) end
+                    end
+                end
+            elseif preset.type == "default" then
+                -- tentativa de restaurar cores/texturas padrão: não possível sem backup completo, então ignore
+            end
+
+            -- tentar forçar visibilidade no inventário local: clonar para Backpack se necessário
+            local lp = Players.LocalPlayer
+            if lp then
+                local parentOk = tool:IsDescendantOf(lp.Backpack) or tool:IsDescendantOf(lp.Character)
+                if not parentOk then
+                    -- evitar clonar várias vezes o mesmo original
+                    if not localClones[tool] or not localClones[tool].Parent then
+                        local ok, clone = pcall(function() return tool:Clone() end)
+                        if ok and clone then
+                            clone.Name = tostring(tool.Name) .. "_localskin"
+                            pcall(function() clone.Parent = lp.Backpack end)
+                            localClones[tool] = clone
+                        end
+                    end
+                end
+            end
+        end)
+    end
+
+    local function applySkinByName(weaponName, preset)
+        local instances = findToolInstancesByName(weaponName)
+        for _, inst in ipairs(instances) do
+            applySkinToTool(inst, preset)
+        end
+        -- tentar também no personagem local
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        if LocalPlayer and LocalPlayer.Character then
+            for _, obj in ipairs(LocalPlayer.Character:GetChildren()) do
+                if (obj:IsA("Tool") or obj:IsA("HopperBin")) and obj.Name == weaponName then
+                    applySkinToTool(obj, preset)
+                end
+            end
+        end
+    end
+
+    applyBtn.MouseButton1Click:Connect(function()
+        local presetIdx = nil
+        for i, v in ipairs(presetNames) do if v == (getSkinSelected and getSkinSelected() or skinChoice) then presetIdx = i break end end
+        local preset = skinPresets[presetIdx] or skinPresets[1]
+        local w = weaponTarget or (weaponDropdown2 and (getWeaponTarget and getWeaponTarget()))
+        if w and w ~= "" then
+            applySkinByName(w, preset)
+        end
+    end)
+
+    applyAllBtn.MouseButton1Click:Connect(function()
+        local presetIdx = nil
+        for i, v in ipairs(presetNames) do if v == (getSkinSelected and getSkinSelected() or skinChoice) then presetIdx = i break end end
+        local preset = skinPresets[presetIdx] or skinPresets[1]
+        local Players = game:GetService("Players")
+        for _, p in ipairs(Players:GetPlayers()) do
+            for _, obj in ipairs(p.Backpack:GetChildren()) do
+                if obj:IsA("Tool") then applySkinToTool(obj, preset) end
+            end
+            if p.Character then
+                for _, obj in ipairs(p.Character:GetChildren()) do if obj:IsA("Tool") then applySkinToTool(obj, preset) end end
+            end
+        end
+        -- também ferramentas no Workspace/ReplicatedStorage
+        for _, c in ipairs({game:GetService("Workspace"), game:GetService("ReplicatedStorage")}) do
+            for _, obj in ipairs(c:GetDescendants()) do
+                if obj and (obj:IsA("Tool") or obj:IsA("HopperBin")) then applySkinToTool(obj, preset) end
+            end
+        end
+    end)
+
+    -- Reconectar e reaplicar ao pegar arma
+    spawn(function()
+        local Players = game:GetService("Players")
+        local LocalPlayer = Players.LocalPlayer
+        if not LocalPlayer then return end
+        LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+            local selected = getSkinSelected and getSkinSelected() or skinChoice
+            local idx
+            for i, v in ipairs(presetNames) do if v == selected then idx = i break end end
+            local preset = skinPresets[idx] or skinPresets[1]
+            if child and child:IsA("Tool") then
+                -- reaplicar se nome corresponder ao alvo atual
+                local target = weaponTarget or (weaponDropdown2 and (getWeaponTarget and getWeaponTarget()))
+                if target and target == child.Name then applySkinToTool(child, preset) end
+            end
+        end)
+    end)
+end
+
 -- Target ESP (color pickers removed)
 yS = yS + 60
+
+-- Scanner / Unlocker de Skins (visual apenas)
+do
+    local skinDatabase = {}
+    local skinList = {}
+    local originalBackup = {} -- map tool -> list of {inst, prop, value}
+
+    local function addSkinToDB(s)
+        if not s or s == "" then return end
+        if type(s) ~= "string" then s = tostring(s) end
+        if not skinDatabase[s] then
+            skinDatabase[s] = true
+            table.insert(skinList, s)
+        end
+    end
+
+    local function scanForSkins()
+        skinDatabase = {}
+        skinList = {}
+        local containers = {game:GetService("ReplicatedStorage"), game:GetService("Workspace"), game:GetService("StarterPack")}
+        for _, c in ipairs(containers) do
+            for _, obj in ipairs(c:GetDescendants()) do
+                pcall(function()
+                    if obj:IsA("Decal") or obj:IsA("Texture") then
+                        addSkinToDB(obj.Texture or obj.TextureId)
+                    elseif obj:IsA("SpecialMesh") then
+                        addSkinToDB(obj.TextureId)
+                        addSkinToDB(obj.MeshId)
+                    elseif obj:IsA("MeshPart") then
+                        addSkinToDB(obj.TextureID or obj.TextureId)
+                    elseif obj:IsA("StringValue") or obj:IsA("IntValue") or obj:IsA("NumberValue") then
+                        local n = tostring(obj.Name):lower()
+                        if n:find("skin") or n:find("texture") or n:find("asset") then addSkinToDB(obj.Value) end
+                    elseif obj:IsA("ModuleScript") then
+                        local ok, m = pcall(require, obj)
+                        if ok and type(m) == "table" then
+                            for k, v in pairs(m) do
+                                local kn = tostring(k):lower()
+                                if kn:find("skin") or kn:find("texture") or kn:find("asset") or kn:find("image") then
+                                    addSkinToDB(v)
+                                end
+                            end
+                        end
+                    end
+                end)
+            end
+        end
+        return skinList
+    end
+
+    local function backupTool(tool)
+        if not tool or originalBackup[tool] then return end
+        originalBackup[tool] = {}
+        for _, d in ipairs(tool:GetDescendants()) do
+            pcall(function()
+                if d:IsA("SpecialMesh") then
+                    originalBackup[tool][d] = originalBackup[tool][d] or {TextureId = d.TextureId, MeshId = d.MeshId}
+                elseif d:IsA("MeshPart") then
+                    originalBackup[tool][d] = originalBackup[tool][d] or {Color = d.Color, TextureID = d.TextureID}
+                elseif d:IsA("BasePart") then
+                    originalBackup[tool][d] = originalBackup[tool][d] or {Color = d.Color}
+                elseif d:IsA("Decal") or d:IsA("Texture") then
+                    originalBackup[tool][d] = originalBackup[tool][d] or {Texture = d.Texture}
+                end
+            end)
+        end
+    end
+
+    local function applyPresetToInstance(inst, preset)
+        if not inst or not preset then return end
+        pcall(function()
+            if preset.type == "color" and preset.color then
+                for _, d in ipairs(inst:GetDescendants()) do
+                    if d:IsA("BasePart") or d:IsA("MeshPart") then pcall(function() d.Color = preset.color end) end
+                end
+            elseif preset.type == "texture" then
+                local tex = textureInput and textureInput.Text or nil
+                if tex and tex ~= "" then
+                    for _, d in ipairs(inst:GetDescendants()) do
+                        if d:IsA("SpecialMesh") then pcall(function() d.TextureId = tex end) end
+                        if d:IsA("MeshPart") then pcall(function() d.TextureID = tex end) end
+                        if d:IsA("Decal") or d:IsA("Texture") then pcall(function() d.Texture = tex end) end
+                    end
+                end
+            end
+        end)
+    end
+
+    local function restoreAllBackups()
+        for tool, map in pairs(originalBackup) do
+            for inst, props in pairs(map) do
+                pcall(function()
+                    for k, v in pairs(props) do
+                        if inst and inst.Parent then
+                            if k == "TextureId" and inst.TextureId ~= v then inst.TextureId = v end
+                            if k == "MeshId" and inst.MeshId ~= v then inst.MeshId = v end
+                            if k == "Color" and inst.Color ~= v then inst.Color = v end
+                            if k == "Texture" and inst.Texture ~= v then inst.Texture = v end
+                            if k == "TextureID" and inst.TextureID ~= v then inst.TextureID = v end
+                        end
+                    end
+                end)
+            end
+        end
+        -- remover clones locais criados
+        for orig, data in pairs(localClones) do
+            pcall(function()
+                local clone = (type(data) == "table" and data.clone) or data
+                if clone and clone.Parent then clone:Destroy() end
+            end)
+        end
+        localClones = {}
+        originalBackup = {}
+    end
+
+    -- Auto-reapply UI checkbox
+    local autoReapply = true
+    createCheckbox(weaponScroll, 0, yW, "Auto Reapply Skins", true, function(state) autoReapply = state end)
+    yW = yW + 28
+
+    -- Background reapplier
+    spawn(function()
+        while true do
+            wait(1)
+            if autoReapply then
+                local lp = Players.LocalPlayer
+                for orig, data in pairs(localClones) do
+                    pcall(function()
+                        local clone = (type(data) == "table" and data.clone) or data
+                        local preset = (type(data) == "table" and data.preset) or nil
+                        -- if clone missing or not parented, try to recreate
+                        if not clone or not clone.Parent then
+                            -- try to recreate from original if present
+                            if data and data.orig and data.orig.Parent then
+                                local ok, newc = pcall(function() return data.orig:Clone() end)
+                                if ok and newc then
+                                    newc.Name = tostring(data.orig.Name) .. "_localskin"
+                                    pcall(function() if lp then newc.Parent = lp.Backpack end end)
+                                    applyPresetToInstance(newc, preset)
+                                    data.clone = newc
+                                    localClones[orig] = data
+                                end
+                            else
+                                -- try to find original by name
+                                local name = nil
+                                if type(orig) == "string" then name = orig else pcall(function() name = orig.Name end) end
+                                if name then
+                                    local found = findToolInstancesByName(name)
+                                    if #found > 0 then
+                                        for _, f in ipairs(found) do
+                                            backupTool(f)
+                                            applyPresetToInstance(f, preset)
+                                            if not data.clone or not data.clone.Parent then
+                                                local ok, c = pcall(function() return f:Clone() end)
+                                                if ok and c then c.Name = tostring(f.Name) .. "_localskin"; pcall(function() if lp then c.Parent = lp.Backpack end end); data.clone = c end
+                                            end
+                                        end
+                                        localClones[orig] = data
+                                    end
+                                end
+                            end
+                        else
+                            -- ensure preset still applied to clone
+                            if preset then applyPresetToInstance(clone, preset) end
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+
+    -- UI: Scan button + results dropdown
+    local scanBtn = Instance.new("TextButton")
+    scanBtn.Size = UDim2.new(0, 120, 0, 28)
+    scanBtn.Position = UDim2.new(0, 0, 0, yW)
+    scanBtn.BackgroundColor3 = Color3.fromRGB(60,60,64)
+    scanBtn.TextColor3 = Color3.fromRGB(220,220,220)
+    scanBtn.Text = "Scan Skins"
+    scanBtn.Font = Enum.Font.Gotham
+    scanBtn.TextSize = 14
+    scanBtn.Parent = weaponScroll
+
+    local scanResultsLabel = Instance.new("TextLabel")
+    scanResultsLabel.Size = UDim2.new(0, 160, 0, 22)
+    scanResultsLabel.Position = UDim2.new(0, 132, 0, yW)
+    scanResultsLabel.BackgroundTransparency = 1
+    scanResultsLabel.Text = "Found: 0"
+    scanResultsLabel.Font = Enum.Font.Gotham
+    scanResultsLabel.TextSize = 14
+    scanResultsLabel.TextColor3 = Color3.fromRGB(200,200,200)
+    scanResultsLabel.TextXAlignment = Enum.TextXAlignment.Left
+    scanResultsLabel.Parent = weaponScroll
+    yW = yW + 36
+
+    local resultsDropdown, getScanSelected = createDropdown(weaponScroll, 0, yW, "Discovered Skins", {"<none>"}, 1, function(i, val) end)
+    yW = yW + 36
+
+    local applyDiscoveredBtn = Instance.new("TextButton")
+    applyDiscoveredBtn.Size = UDim2.new(0, 120, 0, 28)
+    applyDiscoveredBtn.Position = UDim2.new(0, 0, 0, yW)
+    applyDiscoveredBtn.BackgroundColor3 = Color3.fromRGB(10,160,220)
+    applyDiscoveredBtn.TextColor3 = Color3.fromRGB(0,0,0)
+    applyDiscoveredBtn.Text = "Apply Discovered"
+    applyDiscoveredBtn.Font = Enum.Font.GothamBold
+    applyDiscoveredBtn.TextSize = 14
+    applyDiscoveredBtn.Parent = weaponScroll
+
+    local restoreBtn = Instance.new("TextButton")
+    restoreBtn.Size = UDim2.new(0, 120, 0, 28)
+    restoreBtn.Position = UDim2.new(0, 132, 0, yW)
+    restoreBtn.BackgroundColor3 = Color3.fromRGB(200,60,60)
+    restoreBtn.TextColor3 = Color3.fromRGB(255,255,255)
+    restoreBtn.Text = "Restore Originals"
+    restoreBtn.Font = Enum.Font.Gotham
+    restoreBtn.TextSize = 14
+    restoreBtn.Parent = weaponScroll
+    yW = yW + 36
+
+    scanBtn.MouseButton1Click:Connect(function()
+        local list = scanForSkins()
+        scanResultsLabel.Text = "Found: " .. tostring(#list)
+        local labels = {}
+        for _, s in ipairs(list) do table.insert(labels, tostring(s)) end
+        if #labels == 0 then labels = {"<none>"} end
+        -- rebuild dropdown: crude way by destroying and recreating
+        if resultsDropdown and resultsDropdown.Parent then resultsDropdown:Destroy() end
+        resultsDropdown, getScanSelected = createDropdown(weaponScroll, 0, yW-36, "Discovered Skins", labels, 1, function(i, val) end)
+    end)
+
+    applyDiscoveredBtn.MouseButton1Click:Connect(function()
+        local sel = getScanSelected and getScanSelected()
+        if not sel or sel == "<none>" then return end
+        local preset = {type = "texture"}
+        if textureInput then textureInput.Text = tostring(sel) end
+        preset.type = "texture"
+        -- apply to selected weapon
+        local w = weaponTarget or (weaponDropdown2 and (getWeaponTarget and getWeaponTarget()))
+        if w and w ~= "" then
+            local instances = findToolInstancesByName(w)
+            for _, inst in ipairs(instances) do
+                backupTool(inst)
+                applySkinToTool(inst, preset)
+            end
+        end
+    end)
+
+    restoreBtn.MouseButton1Click:Connect(function()
+        restoreAllBackups()
+    end)
+end
 
 -- Espectar Player (telar)
 local spectateConn = nil

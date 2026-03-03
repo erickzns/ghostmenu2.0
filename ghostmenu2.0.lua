@@ -3,12 +3,162 @@
 print("[DEBUG] Script carregado e executando!")
 
 -- Bypass simples: só bloqueia RemoteEvent e RemoteFunction
-local BypassEnabled = false
+-- Ativar bypass por padrão: não enviar RemoteEvent ao servidor ao executar o script
+local BypassEnabled = true
+-- Bypass modes:
+-- "block_all" = bloqueia todo FireServer/Invoke
+-- "allow_whitelist" = bloqueia exceto remotes na whitelist
+-- "passthrough" = não bloqueia (apenas loga quando desativado)
+local BypassMode = "block_all"
+
+-- tabelas configuráveis
+local bypassWhitelist = {} -- keys: Instance (RemoteEvent/RemoteFunction) -> true
+local bypassBlacklist = {} -- keys: Instance -> true
+local lastBlocked = {}
+
+local function remoteId(remote)
+    if not remote or not remote:IsA("Instance") then return "<unknown>" end
+    local ok, name = pcall(function()
+        return tostring(remote:GetFullName())
+    end)
+    if ok and name then return name end
+    return (remote.Name or "<unnamed>")
+end
+
+local function isRemoteAllowed(remote)
+    if bypassBlacklist[remote] then return false end
+    if BypassMode == "block_all" then
+        return false
+    elseif BypassMode == "allow_whitelist" then
+        return bypassWhitelist[remote] == true
+    elseif BypassMode == "passthrough" then
+        return true
+    end
+    return false
+end
+
+local function addToWhitelist(remote)
+    if remote then bypassWhitelist[remote] = true end
+end
+local function removeFromWhitelist(remote)
+    if remote then bypassWhitelist[remote] = nil end
+end
+local function addToBlacklist(remote)
+    if remote then bypassBlacklist[remote] = true end
+end
 
 local function fireServerBypass(remote, ...)
-    if not BypassEnabled and remote and remote:IsA("RemoteEvent") then
-        return remote:FireServer(...)
+    if not remote then return end
+    local args = {...}
+    local okEvent = pcall(function() return remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") end)
+    if not okEvent then return end
+    -- quick decision
+    if not BypassEnabled then
+        -- passthrough when bypass disabled
+        if remote:IsA("RemoteEvent") then
+            return pcall(function() return remote:FireServer(unpack(args)) end)
+        elseif remote:IsA("RemoteFunction") then
+            local s, r = pcall(function() return remote:InvokeServer(unpack(args)) end)
+            if s then return r end
+            return nil
+        end
+        return nil
     end
+
+    local allowed = isRemoteAllowed(remote)
+    if allowed then
+        -- forward safely
+        if remote:IsA("RemoteEvent") then
+            pcall(function() remote:FireServer(unpack(args)) end)
+            return true
+        elseif remote:IsA("RemoteFunction") then
+            local s, r = pcall(function() return remote:InvokeServer(unpack(args)) end)
+            if s then return r end
+            return nil
+        end
+    else
+        -- bloquear: registrar ocorrência e retornar
+        local id = remoteId(remote)
+        lastBlocked[id] = os.time()
+        -- log compacto para não poluir o console
+        if (not lastBlocked.__logged) or (os.time() - (lastBlocked.__logged[id] or 0) > 2) then
+            print(string.format("[Bypass] Bloqueado %s (mode=%s)", id, BypassMode))
+            lastBlocked.__logged = lastBlocked.__logged or {}
+            lastBlocked.__logged[id] = os.time()
+        end
+        return nil
+    end
+end
+
+-- expose helpers in script scope for runtime tweaking
+_G.ModMenu_Bypass = _G.ModMenu_Bypass or {}
+_G.ModMenu_Bypass.mode = BypassMode
+_G.ModMenu_Bypass.setMode = function(m)
+    if m == "block_all" or m == "allow_whitelist" or m == "passthrough" then
+        BypassMode = m
+        _G.ModMenu_Bypass.mode = m
+        print("[Bypass] Mode set to", m)
+    else
+        error("Invalid bypass mode")
+    end
+end
+_G.ModMenu_Bypass.addWhitelist = addToWhitelist
+_G.ModMenu_Bypass.removeWhitelist = removeFromWhitelist
+_G.ModMenu_Bypass.addBlacklist = addToBlacklist
+_G.ModMenu_Bypass.enabled = function() return BypassEnabled end
+_G.ModMenu_Bypass.setEnabled = function(v) BypassEnabled = not not v end
+
+-- Stealth / anti-detection helpers
+local stealthEnabled = false
+local stealthDebug = false -- se true, prints continuam
+local originalPrint = print
+local allowedPlaceIds = {} -- se vazio, aplica-se em qualquer jogo
+
+local function isPlaceAllowed()
+    if not allowedPlaceIds or #allowedPlaceIds == 0 then return true end
+    local pid = tostring(game.PlaceId)
+    for _, v in ipairs(allowedPlaceIds) do
+        if tostring(v) == pid then return true end
+    end
+    return false
+end
+
+local function enableStealth()
+    stealthEnabled = true
+    -- silenciar prints, exceto se stealthDebug
+    print = function(...)
+        if stealthDebug then originalPrint(...) end
+    end
+    -- esconder GUI principal sem destruir (remove do PlayerGui)
+    pcall(function()
+        if main and main.Parent then main.Parent = nil end
+    end)
+    -- mover exponenciais públicos para locais (minimizar _G)
+    if _G and _G.ModMenu_Bypass then
+        _G._MM_BP_BACKUP = _G.ModMenu_Bypass
+        _G.ModMenu_Bypass = nil
+    end
+end
+
+local function disableStealth()
+    stealthEnabled = false
+    print = originalPrint
+    if _G and _G._MM_BP_BACKUP then
+        _G.ModMenu_Bypass = _G._MM_BP_BACKUP
+        _G._MM_BP_BACKUP = nil
+    end
+    pcall(function()
+        if main and not main.Parent then main.Parent = player.PlayerGui end
+    end)
+end
+
+-- Expor utilitários para debug/ajuste em tempo de execução
+_G.ModMenu_Stealth = _G.ModMenu_Stealth or {}
+_G.ModMenu_Stealth.enable = enableStealth
+_G.ModMenu_Stealth.disable = disableStealth
+_G.ModMenu_Stealth.setDebug = function(v) stealthDebug = not not v end
+_G.ModMenu_Stealth.setPlaceWhitelist = function(t)
+    if type(t) == "table" then allowedPlaceIds = t end
 end
 
 -- Antes de criar o menu:
@@ -23,13 +173,16 @@ local selectedBone = nil
 local selectedPlayer = nil
 local selectedWeapon = nil
 local function getOrCreateMenu()
-    local gui = player.PlayerGui:FindFirstChild("FortniteMenu")
-    if gui then
-        return gui
+    -- procurar por ScreenGui marcado como modmenu
+    for _, c in ipairs(player.PlayerGui:GetChildren()) do
+        if c and c:GetAttribute("isModMenu") == true then
+            return c
+        end
     end
     -- Criação do menu normalmente
     gui = Instance.new("ScreenGui")
-    gui.Name = "FortniteMenu"
+    gui.Name = "FGui" .. tostring(math.random(1000,9999))
+    gui:SetAttribute("isModMenu", true)
     gui.ResetOnSpawn = false
     gui.IgnoreGuiInset = true -- ignora a barra superior do Roblox
     gui.DisplayOrder = 9999 -- sempre no topo
@@ -49,6 +202,20 @@ main.BackgroundColor3 = Color3.fromRGB(20, 20, 20) -- preto
 main.BorderSizePixel = 0
 main.AnchorPoint = Vector2.new(0.5, 0.5)
 main.Parent = gui
+
+-- Monitor de PlaceId: desativa features arriscadas quando jogo não está na whitelist
+spawn(function()
+    while true do
+        if not isPlaceAllowed() then
+            pcall(function()
+                if norecoilActive and norecoilDisconnect then norecoilDisconnect() norecoilActive = false end
+                if espActive and espDisconnect then espDisconnect() espActive = false end
+                if aimbotActive and aimbotDisconnect then aimbotDisconnect() aimbotActive = false end
+            end)
+        end
+        wait(5)
+    end
+end)
 
 -- Visual moderno para a janela principal: gradiente e contorno sutil
 -- (Visuals para o frame principal definidos mais abaixo)
@@ -207,6 +374,8 @@ local aimbotAccentCorner = Instance.new("UICorner")
 aimbotAccentCorner.CornerRadius = UDim.new(0, 2)
 aimbotAccentCorner.Parent = aimbotAccent
 
+-- skin UI removed
+
 aimbotBtn.MouseEnter:Connect(function()
     pcall(function()
         TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 0}):Play()
@@ -296,8 +465,11 @@ end
 
 -- Função utilitária para selecionar aba (apenas Aimbot)
 local function selectAimbotTab()
+    print("[ModMenu] selecionando aba Aimbot")
     pcall(function() TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 0}):Play() end)
-    attackPanel.Visible = true
+    if attackPanel then
+        attackPanel.Visible = true
+    end
 end
 
 -- Painel Attack (Aimbot) - área grande à esquerda (ajustado)
@@ -307,6 +479,9 @@ attackPanel.Position = UDim2.new(0, 120, 0, 46)
 attackPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 attackPanel.BorderSizePixel = 0
 attackPanel.Parent = main
+
+-- Backup do attackPanel para restauração caso seja removido
+local attackPanelBackup = attackPanel:Clone()
 
 local attackCorner = Instance.new("UICorner")
 attackCorner.CornerRadius = UDim.new(0, 8)
@@ -355,6 +530,9 @@ attackTitle.TextSize = 16
 attackTitle.TextColor3 = Color3.fromRGB(255,255,255)
 attackTitle.Parent = attackPanel
 
+
+-- skin panel and functionality removed
+
 -- Painel Weapon Mods (direita, topo) (ajustado)
 local weaponPanel = Instance.new("Frame")
 weaponPanel.Size = UDim2.new(0, 300, 0, 180)
@@ -362,6 +540,9 @@ weaponPanel.Position = UDim2.new(0, 480, 0, 46)
 weaponPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 weaponPanel.BorderSizePixel = 0
 weaponPanel.Parent = main
+
+-- Backup do weaponPanel para restauração caso seja removido
+local weaponPanelBackup = weaponPanel:Clone()
 
 local weaponCorner = Instance.new("UICorner")
 weaponCorner.CornerRadius = UDim.new(0, 8)
@@ -422,6 +603,8 @@ visualsPanel.Position = UDim2.new(0, 480, 0, 46)
 visualsPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 visualsPanel.BorderSizePixel = 0
 visualsPanel.Parent = main
+-- Backup do visualsPanel para restauração caso seja removido
+local visualsPanelBackup = visualsPanel:Clone()
 visualsPanel.Visible = false
 
 local visualsCorner = Instance.new("UICorner")
@@ -459,6 +642,9 @@ miscPanel.Position = UDim2.new(0, 480, 0, 236)
 miscPanel.BackgroundColor3 = Color3.fromRGB(28, 28, 32)
 miscPanel.BorderSizePixel = 0
 miscPanel.Parent = main
+
+-- Backup do miscPanel para restauração caso seja removido
+local miscPanelBackup = miscPanel:Clone()
 miscPanel.Visible = false
 
 local miscCorner = Instance.new("UICorner")
@@ -538,6 +724,86 @@ settingsScroll.BorderSizePixel = 0
 settingsScroll.CanvasSize = UDim2.new(0, 0, 0, 700)
 settingsScroll.ScrollBarThickness = 4
 settingsScroll.Parent = settingsPanel
+-- Garantir que exista a tabela de backup antes do monitor (será populada após a criação dos itens)
+local settingsBackupChildren = settingsBackupChildren or {}
+
+-- Monitor específico para restaurar elementos do settings caso sejam removidos
+spawn(function()
+    while true do
+        pcall(function()
+            if stealthEnabled then return end
+            if not settingsScroll or not settingsScroll.Parent then return end
+            -- se poucos filhos, re-popular a partir do backup
+            if #settingsScroll:GetChildren() < math.max(1, math.floor(#settingsBackupChildren/3)) then
+                -- limpar existentes
+                for _, c in ipairs(settingsScroll:GetChildren()) do
+                    if c and c.Destroy then pcall(function() c:Destroy() end) end
+                end
+                -- re-criar a partir do backup
+                for _, template in ipairs(settingsBackupChildren) do
+                    local ok, copy = pcall(function() return template:Clone() end)
+                    if ok and copy then
+                        copy.Parent = settingsScroll
+                    end
+                end
+                print("[ModMenu] Restaurado conteúdo do Settings")
+            end
+        end)
+        wait(1)
+    end
+end)
+
+
+-- Monitor geral para restaurar painéis principais caso o jogo os remova
+spawn(function()
+    while true do
+        pcall(function()
+            if stealthEnabled then return end
+            if not main or not main.Parent then return end
+
+            -- Attack Panel
+            if (not attackPanel or not attackPanel.Parent) and attackPanelBackup then
+                local ok, copy = pcall(function() return attackPanelBackup:Clone() end)
+                if ok and copy then
+                    copy.Parent = main
+                    attackPanel = copy
+                    print("[ModMenu] Restaurado attackPanel")
+                end
+            end
+
+            -- Weapon Panel
+            if (not weaponPanel or not weaponPanel.Parent) and weaponPanelBackup then
+                local ok, copy = pcall(function() return weaponPanelBackup:Clone() end)
+                if ok and copy then
+                    copy.Parent = main
+                    weaponPanel = copy
+                    print("[ModMenu] Restaurado weaponPanel")
+                end
+            end
+
+            -- Visuals Panel
+            if (not visualsPanel or not visualsPanel.Parent) and visualsPanelBackup then
+                local ok, copy = pcall(function() return visualsPanelBackup:Clone() end)
+                if ok and copy then
+                    copy.Parent = main
+                    visualsPanel = copy
+                    print("[ModMenu] Restaurado visualsPanel")
+                end
+            end
+
+            -- Misc Panel
+            if (not miscPanel or not miscPanel.Parent) and miscPanelBackup then
+                local ok, copy = pcall(function() return miscPanelBackup:Clone() end)
+                if ok and copy then
+                    copy.Parent = main
+                    miscPanel = copy
+                    print("[ModMenu] Restaurado miscPanel")
+                end
+            end
+        end)
+        wait(1)
+    end
+end)
 
 
 local settingsTitle = Instance.new("TextLabel")
@@ -718,7 +984,13 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
     valueLabel.Size = UDim2.new(1, -24, 1, 0)
     valueLabel.Position = UDim2.new(0, 8, 0, 0)
     valueLabel.BackgroundTransparency = 1
-    valueLabel.Text = options[selectedIndex]
+    -- sanitize options table to avoid nil values
+    options = options or {}
+    for i=1, #options do
+        if options[i] == nil then options[i] = "" else options[i] = tostring(options[i]) end
+    end
+    if not selectedIndex or not options[selectedIndex] then selectedIndex = 1 end
+    valueLabel.Text = options[selectedIndex] or ""
     valueLabel.Font = Enum.Font.Gotham
     valueLabel.TextSize = 14
     valueLabel.TextColor3 = Color3.fromRGB(180, 180, 200)
@@ -771,7 +1043,7 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
             optBtn.Size = UDim2.new(1, 0, 0, 24)
             optBtn.Position = UDim2.new(0, 0, 0, (i-1)*24)
             optBtn.BackgroundColor3 = Color3.fromRGB(32,32,36)
-            optBtn.Text = opt
+            optBtn.Text = opt == nil and "" or tostring(opt)
             optBtn.Font = Enum.Font.Gotham
             optBtn.TextSize = 14
             optBtn.TextColor3 = Color3.fromRGB(180,180,200)
@@ -1065,6 +1337,11 @@ function enableESP()
     local RunService = game:GetService("RunService")
     local Drawing = Drawing
     -- Removido: atualização em tempo real das cores do ESP
+    -- detectar disponibilidade da Drawing API (usa e remove um objeto de teste)
+    local drawingTest = safeDrawingNew("Line")
+    local drawingAvailable = drawingTest ~= nil
+    if drawingTest then safeRemoveDrawing(drawingTest) end
+    local guiESPInstances = {}
     local function getHeldTool(character)
         for _, v in ipairs(character:GetChildren()) do
             if v:IsA("Tool") then
@@ -1146,103 +1423,140 @@ end
     local function createESP(player)
         if player == LocalPlayer then return end
         local function onCharacterAdded(character)
-            local boxLines = {}
-            for i = 1, 4 do
+            if drawingAvailable then
+                local boxLines = {}
+                for i = 1, 4 do
+                    local line = safeDrawingNew("Line")
+                    if line then
+                        line.Thickness = 2
+                        table.insert(allDrawings, line)
+                    end
+                    boxLines[i] = line
+                end
+                local nameTag = safeDrawingNew("Text")
+                if nameTag then
+                    nameTag.Size = 16
+                    nameTag.Outline = true
+                    nameTag.Center = true
+                    table.insert(allDrawings, nameTag)
+                end
+                local distanceTag = safeDrawingNew("Text")
+                if distanceTag then
+                    distanceTag.Size = 14
+                    distanceTag.Outline = true
+                    distanceTag.Center = true
+                    table.insert(allDrawings, distanceTag)
+                end
+                local itemTag = safeDrawingNew("Text")
+                if itemTag then
+                    itemTag.Size = 14
+                    itemTag.Outline = true
+                    itemTag.Center = true
+                    table.insert(allDrawings, itemTag)
+                end
                 local line = safeDrawingNew("Line")
-                if line then
-                    line.Thickness = 2
-                    table.insert(allDrawings, line)
-                end
-                boxLines[i] = line
+                if line then line.Thickness = 1 table.insert(allDrawings, line) end
+                local healthBar = safeDrawingNew("Line")
+                if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
+                local connection
+                connection = RunService.RenderStepped:Connect(function()
+                    if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then
+                        for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                        if nameTag then nameTag.Visible = false end
+                        if distanceTag then distanceTag.Visible = false end
+                        if itemTag then itemTag.Visible = false end
+                        if healthBar then healthBar.Visible = false end
+                        if line then line.Visible = false end
+                        if connection then connection:Disconnect() end
+                        return
+                    end
+                    local hrp = character.HumanoidRootPart
+                    local size = Vector3.new(4, 6, 2)
+                    local corners = {
+                        hrp.CFrame * Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
+                        hrp.CFrame * Vector3.new(size.X/2, size.Y/2, -size.Z/2),
+                        hrp.CFrame * Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
+                        hrp.CFrame * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2)
+                    }
+                    local screenPoints = {}
+                    local onScreen = true
+                    for i, corner in ipairs(corners) do
+                        local pos, visible = Camera:WorldToViewportPoint(corner)
+                        if not visible then onScreen = false break end
+                        screenPoints[i] = Vector2.new(pos.X, pos.Y)
+                    end
+                    if onScreen then
+                        for i, l in ipairs(boxLines) do if l then l.Color = getBoxColor() end end
+                        if nameTag then nameTag.Color = getTextColor() end
+                        if distanceTag then distanceTag.Color = getTextColor() end
+                        if itemTag then itemTag.Color = getTextColor() end
+                        if line then line.Color = getLineColor() end
+                        if healthBar then healthBar.Color = getHealthColor() end
+                        drawBox(boxLines, screenPoints)
+                        local pos, _ = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, size.Y/2 + 0.5, 0))
+                        drawNameTag(nameTag, player, pos)
+                        drawDistanceTag(distanceTag, hrp, pos)
+                        drawItemTag(itemTag, character, pos)
+                        drawLine(line, pos)
+                        drawHealthBar(healthBar, screenPoints, character)
+                    else
+                        for _, l in ipairs(boxLines) do if l then l.Visible = false end end
+                        if nameTag then nameTag.Visible = false end
+                        if distanceTag then distanceTag.Visible = false end
+                        if itemTag then itemTag.Visible = false end
+                        if healthBar then healthBar.Visible = false end
+                        if line then line.Visible = false end
+                    end
+                end)
+                character.AncestryChanged:Connect(function(_, parent)
+                    if not parent then
+                        for _, l in ipairs(boxLines) do safeRemoveDrawing(l) end
+                        safeRemoveDrawing(nameTag)
+                        safeRemoveDrawing(distanceTag)
+                        safeRemoveDrawing(itemTag)
+                        safeRemoveDrawing(healthBar)
+                        safeRemoveDrawing(line)
+                        if connection then connection:Disconnect() end
+                    end
+                end)
+                table.insert(espConnections, connection)
+            else
+                -- GUI-based fallback (BillboardGui)
+                if not character then return end
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if not hrp then return end
+                local bb = Instance.new("BillboardGui")
+                bb.Name = "ESP_BB"
+                bb.Adornee = hrp
+                bb.Size = UDim2.new(0, 120, 0, 40)
+                bb.AlwaysOnTop = true
+                bb.Parent = gui
+                local label = Instance.new("TextLabel")
+                label.Size = UDim2.new(1,0,1,0)
+                label.BackgroundTransparency = 1
+                label.TextColor3 = getTextColor()
+                label.Font = Enum.Font.GothamBold
+                label.TextSize = 14
+                label.Text = player.Name
+                label.Parent = bb
+
+                local conn = RunService.RenderStepped:Connect(function()
+                    if not character or not character.Parent or not hrp or not hrp.Parent then
+                        if conn then conn:Disconnect() end
+                        if bb then pcall(function() bb:Destroy() end) end
+                        return
+                    end
+                    local pos, visible = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0,3,0))
+                    if visible then
+                        label.Text = string.format("%s | %dm", player.Name, math.floor((hrp.Position - Camera.CFrame.Position).Magnitude))
+                        bb.Enabled = true
+                    else
+                        bb.Enabled = false
+                    end
+                end)
+                table.insert(guiESPInstances, bb)
+                table.insert(espConnections, conn)
             end
-            local nameTag = safeDrawingNew("Text")
-            if nameTag then
-                nameTag.Size = 16
-                nameTag.Outline = true
-                nameTag.Center = true
-                table.insert(allDrawings, nameTag)
-            end
-            local distanceTag = safeDrawingNew("Text")
-            if distanceTag then
-                distanceTag.Size = 14
-                distanceTag.Outline = true
-                distanceTag.Center = true
-                table.insert(allDrawings, distanceTag)
-            end
-            local itemTag = safeDrawingNew("Text")
-            if itemTag then
-                itemTag.Size = 14
-                itemTag.Outline = true
-                itemTag.Center = true
-                table.insert(allDrawings, itemTag)
-            end
-            local line = safeDrawingNew("Line")
-            if line then line.Thickness = 1 table.insert(allDrawings, line) end
-            local healthBar = safeDrawingNew("Line")
-            if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
-            local connection
-            connection = RunService.RenderStepped:Connect(function()
-                if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then
-                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
-                    if nameTag then nameTag.Visible = false end
-                    if distanceTag then distanceTag.Visible = false end
-                    if itemTag then itemTag.Visible = false end
-                    if healthBar then healthBar.Visible = false end
-                    if line then line.Visible = false end
-                    if connection then connection:Disconnect() end
-                    return
-                end
-                local hrp = character.HumanoidRootPart
-                local size = Vector3.new(4, 6, 2)
-                local corners = {
-                    hrp.CFrame * Vector3.new(-size.X/2, size.Y/2, -size.Z/2),
-                    hrp.CFrame * Vector3.new(size.X/2, size.Y/2, -size.Z/2),
-                    hrp.CFrame * Vector3.new(size.X/2, -size.Y/2, -size.Z/2),
-                    hrp.CFrame * Vector3.new(-size.X/2, -size.Y/2, -size.Z/2)
-                }
-                local screenPoints = {}
-                local onScreen = true
-                for i, corner in ipairs(corners) do
-                    local pos, visible = Camera:WorldToViewportPoint(corner)
-                    if not visible then onScreen = false break end
-                    screenPoints[i] = Vector2.new(pos.X, pos.Y)
-                end
-                if onScreen then
-                    -- Atualiza as cores em tempo real usando as funções globais
-                    for i, l in ipairs(boxLines) do if l then l.Color = getBoxColor() end end
-                    if nameTag then nameTag.Color = getTextColor() end
-                    if distanceTag then distanceTag.Color = getTextColor() end
-                    if itemTag then itemTag.Color = getTextColor() end
-                    if line then line.Color = getLineColor() end
-                    if healthBar then healthBar.Color = getHealthColor() end
-                    drawBox(boxLines, screenPoints)
-                    local pos, _ = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, size.Y/2 + 0.5, 0))
-                    drawNameTag(nameTag, player, pos)
-                    drawDistanceTag(distanceTag, hrp, pos)
-                    drawItemTag(itemTag, character, pos)
-                    drawLine(line, pos)
-                    drawHealthBar(healthBar, screenPoints, character)
-                else
-                    for _, l in ipairs(boxLines) do if l then l.Visible = false end end
-                    if nameTag then nameTag.Visible = false end
-                    if distanceTag then distanceTag.Visible = false end
-                    if itemTag then itemTag.Visible = false end
-                    if healthBar then healthBar.Visible = false end
-                    if line then line.Visible = false end
-                end
-            end)
-            character.AncestryChanged:Connect(function(_, parent)
-                if not parent then
-                    for _, l in ipairs(boxLines) do safeRemoveDrawing(l) end
-                    safeRemoveDrawing(nameTag)
-                    safeRemoveDrawing(distanceTag)
-                    safeRemoveDrawing(itemTag)
-                    safeRemoveDrawing(healthBar)
-                    safeRemoveDrawing(line)
-                    if connection then connection:Disconnect() end
-                end
-            end)
-            table.insert(espConnections, connection)
         end
         if player.Character then
             onCharacterAdded(player.Character)
@@ -1300,25 +1614,40 @@ end
             pcall(function() if d and d.Remove then d:Remove() end end)
         end
         allDrawings = {}
+        -- limpar GUIs de fallback
+        if guiESPInstances then
+            for _, g in ipairs(guiESPInstances) do
+                pcall(function() if g and g.Destroy then g:Destroy() end end)
+            end
+            guiESPInstances = {}
+        end
     end
 
     -- Proteção: reanexar o menu ao PlayerGui se ele for recriado
     player.PlayerGui.ChildRemoved:Connect(function(child)
-    if child.Name == "FortniteMenu" then
-        wait(0.5)
-        if not player.PlayerGui:FindFirstChild("FortniteMenu") then
-            gui.Parent = player.PlayerGui
-            print("[Proteção] Menu reanexado ao PlayerGui.")
+        if child and child.GetAttribute and child:GetAttribute("isModMenu") == true then
+            wait(0.5)
+            local exists = false
+            for _, c in ipairs(player.PlayerGui:GetChildren()) do
+                if c and c.GetAttribute and c:GetAttribute("isModMenu") == true then exists = true break end
+            end
+            if not exists and not stealthEnabled then
+                gui.Parent = player.PlayerGui
+                print("[Proteção] Menu reanexado ao PlayerGui.")
+            end
         end
-    end
-end)
+    end)
 
-player.CharacterAdded:Connect(function()
-    if not player.PlayerGui:FindFirstChild("FortniteMenu") then
-        gui.Parent = player.PlayerGui
-        print("[Proteção] Menu reanexado após respawn.")
-    end
-end)
+    player.CharacterAdded:Connect(function()
+        local exists = false
+        for _, c in ipairs(player.PlayerGui:GetChildren()) do
+            if c and c.GetAttribute and c:GetAttribute("isModMenu") == true then exists = true break end
+        end
+        if not exists and not stealthEnabled then
+            gui.Parent = player.PlayerGui
+            print("[Proteção] Menu reanexado após respawn.")
+        end
+    end)
 end
 function onESPToggle(state)
     if state then
@@ -1380,10 +1709,112 @@ local function enableNoRecoil()
             removeRecoil(child)
         end
     end)
+    -- Additional aggressive measures to remove spread and visual recoil
+    local toolActivatedConns = {}
+    local projConn
+    local function sanitizeToolMore(tool)
+        pcall(function()
+            -- Set common numeric properties to zero
+            local keys = {"Spread","spread","SpreadAmount","spreadAmount","Inaccuracy","inaccuracy","Recoil","recoil","Kick","kick","Bloom","bloom","RandomSpread","SpreadAngle","accuracy"}
+            for _, v in ipairs(tool:GetDescendants()) do
+                if v:IsA("NumberValue") or v:IsA("IntValue") or v:IsA("FloatValue") then
+                    local name = tostring(v.Name):lower()
+                    for _, k in ipairs(keys) do
+                        if name:find(k:lower()) then
+                            pcall(function() v.Value = 0 end)
+                        end
+                    end
+                end
+                if v:IsA("ModuleScript") then
+                    local ok, m = pcall(require, v)
+                    if ok and type(m) == "table" then
+                        for key, value in pairs(m) do
+                            local kn = tostring(key):lower()
+                            for _, k in ipairs(keys) do
+                                if kn:find(k:lower()) and type(value) == "number" then
+                                    m[key] = 0
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            -- Hook Activated to quickly reset camera to cancel visual recoil
+            local Players = game:GetService("Players")
+            local LocalPlayer = Players.LocalPlayer
+            local cam = workspace.CurrentCamera
+            if tool and tool:IsA("Tool") then
+                local actConn = tool.Activated:Connect(function()
+                    pcall(function()
+                        local before = cam and cam.CFrame
+                        -- small delay for recoil to apply then restore
+                        task.delay(0.02, function()
+                            if before and cam then
+                                pcall(function() cam.CFrame = before end)
+                            end
+                        end)
+                    end)
+                end)
+                table.insert(toolActivatedConns, actConn)
+            end
+        end)
+    end
+    -- sanitize existing tools more aggressively
+    for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
+        if tool:IsA("Tool") then sanitizeToolMore(tool) end
+    end
+    -- monitor new tools and sanitize
+    local bpSanConn = LocalPlayer.Backpack.ChildAdded:Connect(function(child)
+        if child:IsA("Tool") then sanitizeToolMore(child) end
+    end)
+    table.insert(toolActivatedConns, bpSanConn)
+    -- Intercept projectiles created in workspace and try to align them to aim direction
+    projConn = workspace.DescendantAdded:Connect(function(obj)
+        pcall(function()
+            if not obj then return end
+            local name = tostring(obj.Name):lower()
+            local isProjectile = false
+            if obj:IsA("BasePart") then
+                if name:find("bullet") or name:find("projectile") or name:find("shell") or name:find("pellet") then isProjectile = true end
+                if obj:FindFirstChildWhichIsA("BodyVelocity") or obj:FindFirstChildWhichIsA("VectorForce") then isProjectile = true end
+            end
+            if isProjectile then
+                local Players = game:GetService("Players")
+                local LocalPlayer = Players.LocalPlayer
+                local cam = workspace.CurrentCamera
+                local mouse = LocalPlayer and LocalPlayer:GetMouse()
+                if cam and mouse and mouse.Hit then
+                    local dir = (mouse.Hit.p - cam.CFrame.p)
+                    if dir.Magnitude > 0 then
+                        dir = dir.Unit
+                        -- try to set velocity or CFrame
+                        if obj:IsA("BasePart") then
+                            pcall(function()
+                                if obj:FindFirstChildWhichIsA("BodyVelocity") then
+                                    obj:FindFirstChildWhichIsA("BodyVelocity").Velocity = dir * (obj.Velocity.Magnitude ~= 0 and obj.Velocity.Magnitude or 300)
+                                else
+                                    obj.Velocity = dir * (obj.Velocity.Magnitude ~= 0 and obj.Velocity.Magnitude or 300)
+                                end
+                                obj.CFrame = CFrame.new(obj.Position, obj.Position + dir)
+                            end)
+                        end
+                    end
+                end
+            end
+        end)
+    end)
     norecoilDisconnect = function()
         if charConn then charConn:Disconnect() end
         if bpConn then bpConn:Disconnect() end
         if bpConn2 then bpConn2:Disconnect() end
+        -- disconnect any additional connections
+        if projConn then pcall(function() projConn:Disconnect() end) projConn = nil end
+        if toolActivatedConns then
+            for _, c in ipairs(toolActivatedConns) do
+                if c and type(c.Disconnect) == "function" then pcall(function() c:Disconnect() end) end
+            end
+            toolActivatedConns = nil
+        end
     end
 end
 local function onNoRecoilToggle(state)
@@ -2379,6 +2810,14 @@ end
 createCheckbox(settingsScroll, 0, yS, "Bypass Anticheat (Bloquear servidor)", false, onBypassCheckbox)
 yS = yS + 32
 
+-- Backup dos filhos originais do painel Settings para restauração caso sejam removidos por jogos
+local settingsBackupChildren = {}
+for _, child in ipairs(settingsScroll:GetChildren()) do
+    -- ignorar barras de rolagem internas (opcional)
+    if child.Name ~= "" then end
+    table.insert(settingsBackupChildren, child:Clone())
+end
+
 -- Após criar o gui (ScreenGui principal):
 
 gui:GetPropertyChangedSignal("Visible"):Connect(function()
@@ -2414,6 +2853,8 @@ local function cleanupModMenu()
     if nobloomDisconnect and type(nobloomDisconnect) == "function" then pcall(nobloomDisconnect) nobloomDisconnect = nil end
     -- Remover círculo de FOV
     if fovCircle then pcall(function() fovCircle:Remove() end) fovCircle = nil end
+    -- esconder painéis opcionais
+    if attackPanel then attackPanel.Visible = false end
     -- Resetar variáveis de estado
     noclipActive = false
     aimbotActive = false

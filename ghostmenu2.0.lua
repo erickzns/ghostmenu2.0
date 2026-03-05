@@ -239,8 +239,20 @@ local function safeDrawingNew(kind)
         return nil
     end
     local ok, obj = pcall(function() return Drawing.new(kind) end)
-    if ok and obj then return obj end
-    return nil
+    if not ok or not obj then return nil end
+    -- Registrar para proteção (recriar se o jogo tentar remover)
+    ForceProtect = ForceProtect or {drawings = {}, guis = {}}
+    local snapshot = {}
+    -- tentar capturar propriedades comuns para reaplicação
+    local commonProps = {"Thickness","Size","Outline","Center","Color","Position","Radius","Filled","Text","Font","From","To","Visible"}
+    for _, p in ipairs(commonProps) do
+        pcall(function()
+            local v = obj[p]
+            if v ~= nil then snapshot[p] = v end
+        end)
+    end
+    table.insert(ForceProtect.drawings, {obj = obj, kind = kind, props = snapshot})
+    return obj
 end
 
 local function safeRemoveDrawing(obj)
@@ -249,6 +261,47 @@ local function safeRemoveDrawing(obj)
         if obj.Remove then obj:Remove() elseif obj.remove then obj:remove() end
     end)
 end
+
+-- Helper genérico para atribuir propriedades com segurança
+local function safeSet(obj, key, value)
+    if not obj then return end
+    -- Verificar se propriedade pode ser lida antes de atribuir (evita "not a valid property name")
+    local ok = pcall(function() local _ = obj[key] end)
+    if not ok then return end
+    pcall(function()
+        obj[key] = value
+    end)
+end
+
+-- Monitor para recriar desenhos removidos pelo jogo
+spawn(function()
+    ForceProtect = ForceProtect or {drawings = {}, guis = {}}
+    while true do
+        pcall(function()
+            if type(ForceProtect) == "table" and type(ForceProtect.drawings) == "table" then
+                for i, entry in ipairs(ForceProtect.drawings) do
+                    local ok = pcall(function() local _ = entry and entry.obj and entry.obj.Visible end)
+                    if not ok then
+                        -- tentar recriar
+                        local s, newObj = pcall(function() return Drawing and Drawing.new and Drawing.new(entry and entry.kind) end)
+                        if s and newObj then
+                            -- reaplicar propriedades gravadas com verificação
+                            if type(entry) == "table" and type(entry.props) == "table" then
+                                for k, v in pairs(entry.props) do
+                                    pcall(function() newObj[k] = v end)
+                                end
+                            end
+                            -- substituir no registro e na lista global allDrawings
+                            entry.obj = newObj
+                            table.insert(allDrawings, newObj)
+                        end
+                    end
+                end
+            end
+        end)
+        wait(0.7)
+    end
+end)
 
 local function hideMenu()
     if not main.Visible then return end
@@ -1378,52 +1431,51 @@ end
     end
     local function drawBox(boxLines, screenPoints)
         for i = 1, 4 do
-            boxLines[i].From = screenPoints[i]
-            boxLines[i].To = screenPoints[(i % 4) + 1]
-            boxLines[i].Visible = true
-            boxLines[i].Color = getBoxColor()
+            safeSet(boxLines[i], "From", screenPoints[i])
+            safeSet(boxLines[i], "To", screenPoints[(i % 4) + 1])
+            safeSet(boxLines[i], "Visible", true)
+            safeSet(boxLines[i], "Color", getBoxColor())
         end
     end
     local function drawHealthBar(healthBar, screenPoints, character)
-        local hp = character.Humanoid.Health
-        local maxHp = character.Humanoid.MaxHealth
-        local percent = math.clamp(hp/maxHp, 0, 1)
+        local hp = 0
+        local maxHp = 100
+        pcall(function() hp = character.Humanoid.Health end)
+        pcall(function() maxHp = character.Humanoid.MaxHealth end)
+        local percent = math.clamp((hp or 0)/(maxHp or 1), 0, 1)
         local barStart = screenPoints[1]
-        local barEnd = barStart:Lerp(screenPoints[4], percent)
-        healthBar.From = barStart - Vector2.new(8,0)
-        healthBar.To = barEnd - Vector2.new(8,0)
-        healthBar.Visible = true
-        healthBar.Color = getHealthColor()
+        local barEnd = barStart and barStart:Lerp(screenPoints[4], percent) or nil
+        safeSet(healthBar, "From", barStart and (barStart - Vector2.new(8,0)))
+        safeSet(healthBar, "To", barEnd and (barEnd - Vector2.new(8,0)))
+        safeSet(healthBar, "Visible", true)
+        safeSet(healthBar, "Color", getHealthColor())
     end
     local function drawNameTag(nameTag, player, pos)
-        nameTag.Text = player.Name
-        nameTag.Position = Vector2.new(pos.X, pos.Y - 16)
-        nameTag.Visible = true
-        nameTag.Color = getTextColor()
+        safeSet(nameTag, "Text", player and player.Name)
+        safeSet(nameTag, "Position", pos and Vector2.new(pos.X, pos.Y - 16))
+        safeSet(nameTag, "Visible", true)
+        safeSet(nameTag, "Color", getTextColor())
     end
     local function drawDistanceTag(distanceTag, hrp, pos)
-        local dist = math.floor((hrp.Position - Camera.CFrame.Position).Magnitude)
-        distanceTag.Text = tostring(dist).."m"
-        distanceTag.Position = Vector2.new(pos.X, pos.Y)
-        distanceTag.Visible = true
-        distanceTag.Color = getTextColor()
+        local dist = 0
+        pcall(function() dist = math.floor((hrp.Position - Camera.CFrame.Position).Magnitude) end)
+        safeSet(distanceTag, "Text", tostring(dist).."m")
+        safeSet(distanceTag, "Position", pos and Vector2.new(pos.X, pos.Y))
+        safeSet(distanceTag, "Visible", true)
+        safeSet(distanceTag, "Color", getTextColor())
     end
     local function drawItemTag(itemTag, character, pos)
         local toolName = getHeldTool(character)
-        if toolName then
-            itemTag.Text = toolName
-        else
-            itemTag.Text = ""
-        end
-        itemTag.Position = Vector2.new(pos.X, pos.Y + 16)
-        itemTag.Visible = toolName ~= nil and toolName ~= ""
-        itemTag.Color = getTextColor()
+        safeSet(itemTag, "Text", toolName or "")
+        safeSet(itemTag, "Position", pos and Vector2.new(pos.X, pos.Y + 16))
+        safeSet(itemTag, "Visible", toolName ~= nil and toolName ~= "")
+        safeSet(itemTag, "Color", getTextColor())
     end
     local function drawLine(line, pos)
-        line.From = Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y)
-        line.To = Vector2.new(pos.X, pos.Y)
-        line.Visible = true
-        line.Color = getLineColor()
+        safeSet(line, "From", Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y))
+        safeSet(line, "To", pos and Vector2.new(pos.X, pos.Y))
+        safeSet(line, "Visible", true)
+        safeSet(line, "Color", getLineColor())
     end
     -- Funções globais já estão declaradas fora deste escopo
     -- Mantém apenas as funções drawBox, drawHealthBar, drawNameTag, drawDistanceTag, drawItemTag, drawLine
@@ -1465,15 +1517,38 @@ end
                 if line then line.Thickness = 1 table.insert(allDrawings, line) end
                 local healthBar = safeDrawingNew("Line")
                 if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
+                -- Helpers para verificar/recriar desenhos caso o jogo os delete
+                local function isDrawingValid(obj)
+                    if not obj then return false end
+                    local ok = pcall(function() local _ = obj.Visible end)
+                    return ok
+                end
+                local function ensureDrawingObj(cur, kind, thickness)
+                    if isDrawingValid(cur) then return cur end
+                    local new = safeDrawingNew(kind)
+                    if not new then return nil end
+                    pcall(function()
+                        if thickness and new.Thickness ~= nil then new.Thickness = thickness end
+                    end)
+                    table.insert(allDrawings, new)
+                    return new
+                end
                 local connection
                 connection = RunService.RenderStepped:Connect(function()
+                    -- Recriar desenhos removidos pelo jogo (forçar desenho)
+                    for i = 1, 4 do boxLines[i] = ensureDrawingObj(boxLines[i], "Line", 2) end
+                    nameTag = ensureDrawingObj(nameTag, "Text")
+                    distanceTag = ensureDrawingObj(distanceTag, "Text")
+                    itemTag = ensureDrawingObj(itemTag, "Text")
+                    line = ensureDrawingObj(line, "Line", 1)
+                    healthBar = ensureDrawingObj(healthBar, "Line", 4)
                     if not character or not character:FindFirstChild("HumanoidRootPart") or not character:FindFirstChild("Humanoid") then
-                        for _, l in ipairs(boxLines) do if l then l.Visible = false end end
-                        if nameTag then nameTag.Visible = false end
-                        if distanceTag then distanceTag.Visible = false end
-                        if itemTag then itemTag.Visible = false end
-                        if healthBar then healthBar.Visible = false end
-                        if line then line.Visible = false end
+                        for _, l in ipairs(boxLines) do safeSet(l, "Visible", false) end
+                        safeSet(nameTag, "Visible", false)
+                        safeSet(distanceTag, "Visible", false)
+                        safeSet(itemTag, "Visible", false)
+                        safeSet(healthBar, "Visible", false)
+                        safeSet(line, "Visible", false)
                         if connection then connection:Disconnect() end
                         return
                     end
@@ -1493,12 +1568,12 @@ end
                         screenPoints[i] = Vector2.new(pos.X, pos.Y)
                     end
                     if onScreen then
-                        for i, l in ipairs(boxLines) do if l then l.Color = getBoxColor() end end
-                        if nameTag then nameTag.Color = getTextColor() end
-                        if distanceTag then distanceTag.Color = getTextColor() end
-                        if itemTag then itemTag.Color = getTextColor() end
-                        if line then line.Color = getLineColor() end
-                        if healthBar then healthBar.Color = getHealthColor() end
+                        for i, l in ipairs(boxLines) do safeSet(l, "Color", getBoxColor()) end
+                        safeSet(nameTag, "Color", getTextColor())
+                        safeSet(distanceTag, "Color", getTextColor())
+                        safeSet(itemTag, "Color", getTextColor())
+                        safeSet(line, "Color", getLineColor())
+                        safeSet(healthBar, "Color", getHealthColor())
                         drawBox(boxLines, screenPoints)
                         local pos, _ = Camera:WorldToViewportPoint(hrp.Position + Vector3.new(0, size.Y/2 + 0.5, 0))
                         drawNameTag(nameTag, player, pos)
@@ -1507,12 +1582,12 @@ end
                         drawLine(line, pos)
                         drawHealthBar(healthBar, screenPoints, character)
                     else
-                        for _, l in ipairs(boxLines) do if l then l.Visible = false end end
-                        if nameTag then nameTag.Visible = false end
-                        if distanceTag then distanceTag.Visible = false end
-                        if itemTag then itemTag.Visible = false end
-                        if healthBar then healthBar.Visible = false end
-                        if line then line.Visible = false end
+                        for _, l in ipairs(boxLines) do safeSet(l, "Visible", false) end
+                        safeSet(nameTag, "Visible", false)
+                        safeSet(distanceTag, "Visible", false)
+                        safeSet(itemTag, "Visible", false)
+                        safeSet(healthBar, "Visible", false)
+                        safeSet(line, "Visible", false)
                     end
                 end)
                 character.AncestryChanged:Connect(function(_, parent)
@@ -2785,16 +2860,17 @@ do
                 end)
             end
         end
-        -- remover clones locais criados
+    -- remover clones locais criados
+    if type(localClones) == "table" then
         for orig, data in pairs(localClones) do
             pcall(function()
                 local clone = (type(data) == "table" and data.clone) or data
                 if clone and clone.Parent then clone:Destroy() end
             end)
         end
-        localClones = {}
-        originalBackup = {}
     end
+    localClones = {}
+    originalBackup = {}
 
     -- Auto-reapply UI checkbox
     local autoReapply = true
@@ -2806,7 +2882,8 @@ do
         while true do
             wait(1)
             if autoReapply then
-                local lp = Players.LocalPlayer
+                local lp = nil
+                pcall(function() lp = (Players and Players.LocalPlayer) end)
                 for orig, data in pairs(localClones) do
                     pcall(function()
                         local clone = (type(data) == "table" and data.clone) or data
@@ -2930,6 +3007,7 @@ do
     restoreBtn.MouseButton1Click:Connect(function()
         restoreAllBackups()
     end)
+end
 end
 
 -- Espectar Player (telar)
@@ -3285,19 +3363,24 @@ yS = yS + 32
 
 -- Backup dos filhos originais do painel Settings para restauração caso sejam removidos por jogos
 local settingsBackupChildren = {}
-for _, child in ipairs(settingsScroll:GetChildren()) do
-    -- ignorar barras de rolagem internas (opcional)
-    if child.Name ~= "" then end
-    table.insert(settingsBackupChildren, child:Clone())
+do
+    for _, child in ipairs(settingsScroll:GetChildren()) do
+        -- ignorar barras de rolagem internas (opcional)
+        if child.Name ~= "" then end
+        table.insert(settingsBackupChildren, child:Clone())
+    end
 end
 
 -- Após criar o gui (ScreenGui principal):
 
 gui:GetPropertyChangedSignal("Visible"):Connect(function()
-    if not gui.Visible then
-        gui.Visible = true
-        print("[Proteção] Menu forçado a ficar visível.")
-    end
+    pcall(function()
+        local ok, vis = pcall(function() return gui and gui.Visible end)
+        if ok and not vis then
+            pcall(function() if gui and gui.Parent then gui.Visible = true end end)
+            print("[Proteção] Menu forçado a ficar visível.")
+        end
+    end)
 end)
 
 -- Função para desativar/limpar todas as funções do mod menu

@@ -16,7 +16,7 @@ local bypassWhitelist = {} -- keys: Instance (RemoteEvent/RemoteFunction) -> tru
 local bypassBlacklist = {} -- keys: Instance -> true
 local lastBlocked = {}
 
-local function remoteId(remote)
+function remoteId(remote)
     if not remote or not remote:IsA("Instance") then return "<unknown>" end
     local ok, name = pcall(function()
         return tostring(remote:GetFullName())
@@ -25,7 +25,58 @@ local function remoteId(remote)
     return (remote.Name or "<unnamed>")
 end
 
-local function isRemoteAllowed(remote)
+function findRemoteByNames(names)
+    if type(names) ~= "table" then return nil end
+    local lowered = {}
+    for _, name in ipairs(names) do
+        if type(name) == "string" then
+            table.insert(lowered, name:lower())
+        end
+    end
+    local services = {
+        game:GetService("ReplicatedStorage"),
+        game:GetService("ReplicatedFirst"),
+        game:GetService("Workspace"),
+        game:GetService("StarterPack"),
+        game:GetService("ServerStorage"),
+        game:GetService("StarterPlayer"),
+        game:GetService("Players"),
+    }
+    function isMatch(obj)
+        if not obj or not obj:IsA("Instance") then return false end
+        if not (obj:IsA("RemoteEvent") or obj:IsA("RemoteFunction")) then return false end
+        local nameLower = tostring(obj.Name):lower()
+        local fullNameLower = tostring(obj:GetFullName()):lower()
+        for _, target in ipairs(lowered) do
+            if nameLower == target then
+                return true
+            end
+            if string.find(nameLower, target, 1, true) then
+                return true
+            end
+            if string.find(fullNameLower, target, 1, true) then
+                return true
+            end
+        end
+        return false
+    end
+    for _, svc in ipairs(services) do
+        local ok, result = pcall(function()
+            for _, obj in ipairs(svc:GetDescendants()) do
+                if isMatch(obj) then
+                    return obj
+                end
+            end
+            return nil
+        end)
+        if ok and result then
+            return result
+        end
+    end
+    return nil
+end
+
+function isRemoteAllowed(remote)
     if bypassBlacklist[remote] then return false end
     if BypassMode == "block_all" then
         return false
@@ -37,17 +88,49 @@ local function isRemoteAllowed(remote)
     return false
 end
 
-local function addToWhitelist(remote)
+function addToWhitelist(remote)
     if remote then bypassWhitelist[remote] = true end
 end
-local function removeFromWhitelist(remote)
+function removeFromWhitelist(remote)
     if remote then bypassWhitelist[remote] = nil end
 end
-local function addToBlacklist(remote)
+function addToBlacklist(remote)
     if remote then bypassBlacklist[remote] = true end
 end
 
-local function fireServerBypass(remote, ...)
+function getVehicleModels()
+    local vehicles = {}
+    function scan(parent)
+        for _, obj in ipairs(parent:GetChildren()) do
+            if obj:IsA("Model") then
+                local lowerName = obj.Name:lower()
+                local hasSeat = false
+                for _, descendant in ipairs(obj:GetDescendants()) do
+                    if descendant:IsA("VehicleSeat") or descendant:IsA("Seat") then
+                        hasSeat = true
+                        break
+                    end
+                end
+                if hasSeat or lowerName:find("vehicle") or lowerName:find("car") or lowerName:find("truck") then
+                    table.insert(vehicles, obj)
+                else
+                    scan(obj)
+                end
+            elseif obj:IsA("Instance") then
+                scan(obj)
+            end
+        end
+    end
+    local roots = {workspace, game:GetService("ReplicatedStorage"), game:GetService("StarterPack"), game:GetService("ServerStorage")}
+    for _, root in ipairs(roots) do
+        if root then
+            pcall(function() scan(root) end)
+        end
+    end
+    return vehicles
+end
+
+function fireServerBypass(remote, ...)
     if not remote then return end
     local args = {...}
     local okEvent = pcall(function() return remote:IsA("RemoteEvent") or remote:IsA("RemoteFunction") end)
@@ -114,7 +197,7 @@ local stealthDebug = false -- se true, prints continuam
 local originalPrint = print
 local allowedPlaceIds = {} -- se vazio, aplica-se em qualquer jogo
 
-local function isPlaceAllowed()
+function isPlaceAllowed()
     if not allowedPlaceIds or #allowedPlaceIds == 0 then return true end
     local pid = tostring(game.PlaceId)
     for _, v in ipairs(allowedPlaceIds) do
@@ -123,7 +206,7 @@ local function isPlaceAllowed()
     return false
 end
 
-local function enableStealth()
+function enableStealth()
     stealthEnabled = true
     -- silenciar prints, exceto se stealthDebug
     print = function(...)
@@ -140,7 +223,7 @@ local function enableStealth()
     end
 end
 
-local function disableStealth()
+function disableStealth()
     stealthEnabled = false
     print = originalPrint
     if _G and _G._MM_BP_BACKUP then
@@ -172,7 +255,7 @@ local targetsOption = "Knocked, Bots"
 local selectedBone = nil
 local selectedPlayer = nil
 local selectedWeapon = nil
-local function getOrCreateMenu()
+function getOrCreateMenu()
     -- procurar por ScreenGui marcado como modmenu
     for _, c in ipairs(player.PlayerGui:GetChildren()) do
         if c and c:GetAttribute("isModMenu") == true then
@@ -225,7 +308,7 @@ local TweenService = game:GetService("TweenService")
 local tweenInfoFast = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 local tweenInfoMed = TweenInfo.new(0.28, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
-local function showMenu()
+function showMenu()
     if main.Visible then return end
     main.Position = UDim2.new(0.5, -410, 0.3, -260)
     main.BackgroundTransparency = 1
@@ -234,7 +317,7 @@ local function showMenu()
 end
 
 -- Helper seguro para Drawing (alguns ambientes não expõem Drawing API)
-local function safeDrawingNew(kind)
+function safeDrawingNew(kind)
     if type(Drawing) ~= "table" or type(Drawing.new) ~= "function" then
         return nil
     end
@@ -255,7 +338,7 @@ local function safeDrawingNew(kind)
     return obj
 end
 
-local function safeRemoveDrawing(obj)
+function safeRemoveDrawing(obj)
     if not obj then return end
     pcall(function()
         if obj.Remove then obj:Remove() elseif obj.remove then obj:remove() end
@@ -263,7 +346,7 @@ local function safeRemoveDrawing(obj)
 end
 
 -- Helper genérico para atribuir propriedades com segurança
-local function safeSet(obj, key, value)
+function safeSet(obj, key, value)
     if not obj then return end
     -- Verificar se propriedade pode ser lida antes de atribuir (evita "not a valid property name")
     local ok = pcall(function() local _ = obj[key] end)
@@ -303,7 +386,7 @@ spawn(function()
     end
 end)
 
-local function hideMenu()
+function hideMenu()
     if not main.Visible then return end
     local tw = TweenService:Create(main, tweenInfoFast, {Position = UDim2.new(0.5, -410, 0.2, -260), BackgroundTransparency = 1})
     tw:Play()
@@ -443,7 +526,7 @@ aimbotBtn.MouseLeave:Connect(function()
 end)
 
 -- Botões adicionais na aba lateral
-local function makeSidebarBtn(name, icon, y)
+function makeSidebarBtn(name, icon, y)
     local btn = Instance.new("TextButton")
     btn.Size = UDim2.new(1, 0, 0, 48)
     btn.Position = UDim2.new(0, 0, 0, y)
@@ -517,7 +600,7 @@ local function makeSidebarBtn(name, icon, y)
 end
 
 -- Função utilitária para selecionar aba (apenas Aimbot)
-local function selectAimbotTab()
+function selectAimbotTab()
     print("[ModMenu] selecionando aba Aimbot")
     pcall(function() TweenService:Create(aimbotAccent, tweenInfoFast, {BackgroundTransparency = 0}):Play() end)
     if attackPanel then
@@ -774,7 +857,7 @@ settingsScroll.Size = UDim2.new(1, 0, 1, -28)
 settingsScroll.Position = UDim2.new(0, 0, 0, 28)
 settingsScroll.BackgroundTransparency = 1
 settingsScroll.BorderSizePixel = 0
-settingsScroll.CanvasSize = UDim2.new(0, 0, 0, 700)
+settingsScroll.CanvasSize = UDim2.new(0, 0, 0, 1000)
 settingsScroll.ScrollBarThickness = 4
 settingsScroll.Parent = settingsPanel
 -- Garantir que exista a tabela de backup antes do monitor (será populada após a criação dos itens)
@@ -899,6 +982,11 @@ end)
 
 closeBtn.MouseButton1Click:Connect(function()
     if main and main.Parent then
+        -- Destruir a bolinha também
+        if _G.MobileMenuButton and _G.MobileMenuButton.Parent then
+            _G.MobileMenuButton:Destroy()
+            _G.MobileMenuButton = nil
+        end
         main:Destroy()
     end
 end)
@@ -956,8 +1044,136 @@ UIS.InputBegan:Connect(function(input, processed)
     end
 end)
 
+-- Botão Flutuante para Mobile (Bolinha)
+local mobileButton = Instance.new("TextButton")
+mobileButton.Name = "MobileMenuButton"
+mobileButton.Size = UDim2.new(0, 60, 0, 60)
+mobileButton.Position = UDim2.new(1, -80, 1, -80) -- Canto inferior direito
+mobileButton.BackgroundColor3 = Color3.fromRGB(0, 200, 255) -- Ciano
+mobileButton.BorderSizePixel = 0
+mobileButton.Text = "☰"
+mobileButton.TextSize = 24
+mobileButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+mobileButton.Font = Enum.Font.GothamBold
+mobileButton.AutoButtonColor = false
+mobileButton.ZIndex = 10000
+mobileButton.Parent = gui
+
+-- Armazenar referência global
+_G.MobileMenuButton = mobileButton
+
+-- Fazer o botão circular
+local mobileButtonCorner = Instance.new("UICorner")
+mobileButtonCorner.CornerRadius = UDim.new(0.5, 0) -- 50% = círculo perfeito
+mobileButtonCorner.Parent = mobileButton
+
+-- Shadow/Border sutil para o botão
+local mobileButtonStroke = Instance.new("UIStroke")
+mobileButtonStroke.Thickness = 2
+mobileButtonStroke.Color = Color3.fromRGB(0, 150, 200)
+mobileButtonStroke.Parent = mobileButton
+
+-- Gradient no botão
+local mobileButtonGrad = Instance.new("UIGradient")
+mobileButtonGrad.Color = ColorSequence.new{
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(100, 220, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(0, 180, 220)),
+}
+mobileButtonGrad.Parent = mobileButton
+
+-- Variaveis para drag do botão mobile
+local mobileDragging = false
+local mobileDragInput = nil
+local mobileDragStart = nil
+local mobileStartPos = nil
+
+-- Efeito ao passar o mouse
+mobileButton.MouseEnter:Connect(function()
+    if not mobileDragging then
+        TweenService:Create(mobileButton, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(0, 150, 200)}):Play()
+    end
+end)
+
+mobileButton.MouseLeave:Connect(function()
+    if not mobileDragging then
+        TweenService:Create(mobileButton, tweenInfoFast, {BackgroundColor3 = Color3.fromRGB(0, 200, 255)}):Play()
+    end
+end)
+
+-- Click para abrir/fechar menu
+mobileButton.MouseButton1Click:Connect(function()
+    if main and main.Parent then
+        if main.Visible then 
+            hideMenu() 
+        else 
+            showMenu() 
+        end
+    end
+end)
+
+-- Drag do botão mobile (sistema simples)
+mobileButton.MouseButton1Down:Connect(function()
+    mobileDragging = true
+end)
+
+mobileButton.MouseButton1Up:Connect(function()
+    mobileDragging = false
+end)
+
+-- Monitorar drag
+spawn(function()
+    while true do
+        pcall(function()
+            if mobileDragging and mobileButton and mobileButton.Parent then
+                local mousePos = UIS:GetMouseLocation()
+                local buttonSize = mobileButton.AbsoluteSize
+                
+                -- Posicionar a bolinha com o mouse no centro
+                local newX = mousePos.X - (buttonSize.X / 2)
+                local newY = mousePos.Y - (buttonSize.Y / 2)
+                
+                -- Limitar aos limites da tela
+                local screenSize = gui.AbsoluteSize
+                newX = math.max(0, math.min(newX, screenSize.X - 60))
+                newY = math.max(0, math.min(newY, screenSize.Y - 60))
+                
+                mobileButton.Position = UDim2.new(0, newX, 0, newY)
+            end
+        end)
+        wait(0.016)
+    end
+end)
+
+-- Também parar quando o mouse sai da tela
+UIS.InputEnded:Connect(function(input, processed)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        if mobileDragging then
+            mobileDragging = false
+        end
+    end
+end)
+
+-- Monitor para destruir a bolinha quando o menu for destruído
+spawn(function()
+    while true do
+        wait(0.5)
+        if _G.MobileMenuButton then
+            -- Se o main foi destruído mas a bolinha existe, destrói a bolinha
+            if not main or not main.Parent then
+                if _G.MobileMenuButton and _G.MobileMenuButton.Parent then
+                    _G.MobileMenuButton:Destroy()
+                end
+                _G.MobileMenuButton = nil
+                break
+            end
+        else
+            break
+        end
+    end
+end)
+
 -- Funções utilitárias para UI interativa
-local function createCheckbox(parent, x, y, labelText, checkedDefault, callback)
+function createCheckbox(parent, x, y, labelText, checkedDefault, callback)
     local checked = checkedDefault
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(0, 140, 0, 22)
@@ -1021,7 +1237,7 @@ local function createCheckbox(parent, x, y, labelText, checkedDefault, callback)
     return box, function() return checked end
 end
 
-local function createDropdown(parent, x, y, labelText, options, selectedIndex, callback)
+function createDropdown(parent, x, y, labelText, options, selectedIndex, callback)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(0, 120, 0, 22)
     label.Position = UDim2.new(0, x, 0, y)
@@ -1129,7 +1345,7 @@ local function createDropdown(parent, x, y, labelText, options, selectedIndex, c
     return box, function() return options[selectedIndex] end
 end
 
-local function createSlider(parent, x, y, labelText, value, min, max, callback)
+function createSlider(parent, x, y, labelText, value, min, max, callback)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(0, 140, 0, 20)
     label.Position = UDim2.new(0, x, 0, y)
@@ -1202,7 +1418,7 @@ local function createSlider(parent, x, y, labelText, value, min, max, callback)
     return knob, function() return value end
 end
 
-local function createColorBox(parent, x, y, labelText, color, callback)
+function createColorBox(parent, x, y, labelText, color, callback)
     local box = Instance.new("TextButton")
     box.Size = UDim2.new(0, 24, 0, 24)
     box.Position = UDim2.new(0, x+120, 0, y)
@@ -1402,7 +1618,7 @@ function enableESP()
     local drawingAvailable = drawingTest ~= nil
     if drawingTest then safeRemoveDrawing(drawingTest) end
     local guiESPInstances = {}
-    local function getHeldTool(character)
+    function getHeldTool(character)
         for _, v in ipairs(character:GetChildren()) do
             if v:IsA("Tool") then
                 return v.Name
@@ -1410,26 +1626,26 @@ function enableESP()
         end
         return nil
     end
-local function getBoxColor()
+function getBoxColor()
     return Color3.fromRGB(255,255,255)
 end
-local function getLineColor()
+function getLineColor()
     return Color3.fromRGB(255,255,255)
 end
-local function getHealthColor()
+function getHealthColor()
     return Color3.fromRGB(0,255,0)
 end
-local function getTextColor()
+function getTextColor()
     return Color3.fromRGB(255,255,255)
 end
             -- Atualiza em tempo real ao mudar cor ou checkbox
-    local function getHealthColor()
+    function getHealthColor()
         return Color3.fromRGB(0,255,0)
     end
-    local function getTextColor()
+    function getTextColor()
         return Color3.fromRGB(255,255,255)
     end
-    local function drawBox(boxLines, screenPoints)
+    function drawBox(boxLines, screenPoints)
         for i = 1, 4 do
             safeSet(boxLines[i], "From", screenPoints[i])
             safeSet(boxLines[i], "To", screenPoints[(i % 4) + 1])
@@ -1437,7 +1653,7 @@ end
             safeSet(boxLines[i], "Color", getBoxColor())
         end
     end
-    local function drawHealthBar(healthBar, screenPoints, character)
+    function drawHealthBar(healthBar, screenPoints, character)
         local hp = 0
         local maxHp = 100
         pcall(function() hp = character.Humanoid.Health end)
@@ -1450,13 +1666,13 @@ end
         safeSet(healthBar, "Visible", true)
         safeSet(healthBar, "Color", getHealthColor())
     end
-    local function drawNameTag(nameTag, player, pos)
+    function drawNameTag(nameTag, player, pos)
         safeSet(nameTag, "Text", player and player.Name)
         safeSet(nameTag, "Position", pos and Vector2.new(pos.X, pos.Y - 16))
         safeSet(nameTag, "Visible", true)
         safeSet(nameTag, "Color", getTextColor())
     end
-    local function drawDistanceTag(distanceTag, hrp, pos)
+    function drawDistanceTag(distanceTag, hrp, pos)
         local dist = 0
         pcall(function() dist = math.floor((hrp.Position - Camera.CFrame.Position).Magnitude) end)
         safeSet(distanceTag, "Text", tostring(dist).."m")
@@ -1464,14 +1680,14 @@ end
         safeSet(distanceTag, "Visible", true)
         safeSet(distanceTag, "Color", getTextColor())
     end
-    local function drawItemTag(itemTag, character, pos)
+    function drawItemTag(itemTag, character, pos)
         local toolName = getHeldTool(character)
         safeSet(itemTag, "Text", toolName or "")
         safeSet(itemTag, "Position", pos and Vector2.new(pos.X, pos.Y + 16))
         safeSet(itemTag, "Visible", toolName ~= nil and toolName ~= "")
         safeSet(itemTag, "Color", getTextColor())
     end
-    local function drawLine(line, pos)
+    function drawLine(line, pos)
         safeSet(line, "From", Vector2.new(Camera.ViewportSize.X/2, Camera.ViewportSize.Y))
         safeSet(line, "To", pos and Vector2.new(pos.X, pos.Y))
         safeSet(line, "Visible", true)
@@ -1479,9 +1695,9 @@ end
     end
     -- Funções globais já estão declaradas fora deste escopo
     -- Mantém apenas as funções drawBox, drawHealthBar, drawNameTag, drawDistanceTag, drawItemTag, drawLine
-    local function createESP(player)
+    function createESP(player)
         if player == LocalPlayer then return end
-        local function onCharacterAdded(character)
+        function onCharacterAdded(character)
             if drawingAvailable then
                 local boxLines = {}
                 for i = 1, 4 do
@@ -1518,12 +1734,12 @@ end
                 local healthBar = safeDrawingNew("Line")
                 if healthBar then healthBar.Thickness = 4 table.insert(allDrawings, healthBar) end
                 -- Helpers para verificar/recriar desenhos caso o jogo os delete
-                local function isDrawingValid(obj)
+                function isDrawingValid(obj)
                     if not obj then return false end
                     local ok = pcall(function() local _ = obj.Visible end)
                     return ok
                 end
-                local function ensureDrawingObj(cur, kind, thickness)
+                function ensureDrawingObj(cur, kind, thickness)
                     if isDrawingValid(cur) then return cur end
                     local new = safeDrawingNew(kind)
                     if not new then return nil end
@@ -1646,7 +1862,7 @@ end
         table.insert(espConnections, player.CharacterAdded:Connect(onCharacterAdded))
     end
     -- Função para decidir se deve criar ESP para o player
-    local function shouldCreateESP(player)
+    function shouldCreateESP(player)
         if player == LocalPlayer then return false end
         if targetsOption == "All" then return true end
         if targetsOption == "Players" then
@@ -1749,10 +1965,10 @@ yA = yA + 28
 -- Checkbox NoRecoil real
 local norecoilActive = false
 local norecoilDisconnect = nil
-local function enableNoRecoil()
+function enableNoRecoil()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
-    local function removeRecoil(tool)
+    function removeRecoil(tool)
         for _, v in pairs(tool:GetDescendants()) do
             if v:IsA("NumberValue") or v:IsA("IntValue") then
                 if v.Name:lower():find("recoil") or v.Name:lower():find("kick") then
@@ -1794,7 +2010,7 @@ local function enableNoRecoil()
     -- Additional aggressive measures to remove spread and visual recoil
     local toolActivatedConns = {}
     local projConn
-    local function sanitizeToolMore(tool)
+    function sanitizeToolMore(tool)
         pcall(function()
             -- Set common numeric properties to zero
             local keys = {"Spread","spread","SpreadAmount","spreadAmount","Inaccuracy","inaccuracy","Recoil","recoil","Kick","kick","Bloom","bloom","RandomSpread","SpreadAngle","accuracy"}
@@ -1899,7 +2115,7 @@ local function enableNoRecoil()
         end
     end
 end
-local function onNoRecoilToggle(state)
+function onNoRecoilToggle(state)
     if state then
         if not norecoilActive then
             enableNoRecoil()
@@ -1917,7 +2133,7 @@ yA = yA + 28
 createSlider(attackScroll, 0, yA, "Smoothness", 0, 0, 10)
 yA = yA + 36
 -- Campos desabilitados (apenas visual)
-local function disabledFieldA(labelText, value)
+function disabledFieldA(labelText, value)
     local label = Instance.new("TextLabel")
     label.Size = UDim2.new(0, 140, 0, 22)
     label.Position = UDim2.new(0, 18, 0, yA)
@@ -1957,14 +2173,14 @@ yA = yA + 28
 -- Triggerbot funcional
 local triggerbotActive = false
 local triggerbotDisconnect = nil
-local function enableTriggerbot()
+function enableTriggerbot()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
     local UserInputService = game:GetService("UserInputService")
     local RunService = game:GetService("RunService")
     local mouse = LocalPlayer:GetMouse()
-    local function isPlayerInCrosshair()
+    function isPlayerInCrosshair()
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
                 local bone = getAimbotBone(player.Character)
@@ -2019,7 +2235,7 @@ local function enableTriggerbot()
         if con then con:Disconnect() end
     end
 end
-local function onTriggerbotToggle(state)
+function onTriggerbotToggle(state)
     if state then
         if not triggerbotActive then
             enableTriggerbot()
@@ -2037,7 +2253,7 @@ yA = yA + 28
 createCheckbox(attackScroll, 0, yA, "Triggerbot", false, onTriggerbotToggle)
 yA = yA + 28
 local alwaysTriggerActive = false
-local function onAlwaysTriggerToggle(state)
+function onAlwaysTriggerToggle(state)
     alwaysTriggerActive = state
     -- Se ativar, ativa o triggerbot automaticamente
     if alwaysTriggerActive and not triggerbotActive then
@@ -2061,10 +2277,10 @@ disabledFieldA("Only Shotgun", "")
 local yW = 4
 local nobloomActive = false
 local nobloomDisconnect = nil
-local function enableNoBloom()
+function enableNoBloom()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
-    local function removeBloom(tool)
+    function removeBloom(tool)
         for _, v in pairs(tool:GetDescendants()) do
             if v:IsA("NumberValue") or v:IsA("IntValue") then
                 if v.Name:lower():find("spread") or v.Name:lower():find("bloom") then
@@ -2109,7 +2325,7 @@ local function enableNoBloom()
         if bpConn2 then bpConn2:Disconnect() end
     end
 end
-local function onNoBloomToggle(state)
+function onNoBloomToggle(state)
     if state then
         if not nobloomActive then
             enableNoBloom()
@@ -2126,10 +2342,10 @@ createCheckbox(weaponScroll, 0, yW, "NoBloom", false, onNoBloomToggle)
 yW = yW + 28
 local instantChargeActive = false
 local instantChargeDisconnect = nil
-local function enableInstantCharge()
+function enableInstantCharge()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
-    local function instantCharge(tool)
+    function instantCharge(tool)
         for _, v in pairs(tool:GetDescendants()) do
             if v:IsA("NumberValue") or v:IsA("IntValue") then
                 if v.Name:lower():find("charge") or v.Name:lower():find("delay") then
@@ -2174,7 +2390,7 @@ local function enableInstantCharge()
         if bpConn2 then bpConn2:Disconnect() end
     end
 end
-local function onInstantChargeToggle(state)
+function onInstantChargeToggle(state)
     if state then
         if not instantChargeActive then
             enableInstantCharge()
@@ -2191,7 +2407,7 @@ createCheckbox(weaponScroll, 0, yW, "Instant Charge", false, onInstantChargeTogg
 yW = yW + 28
 local noAimbotWhilstBuildingActive = false
 local buildConn = nil
-local function isBuilding()
+function isBuilding()
     -- Exemplo: verifica se o player está segurando uma ferramenta de construção
     local tool = player.Character and player.Character:FindFirstChildOfClass("Tool")
     if tool and tool.Name:lower():find("build") then
@@ -2199,7 +2415,7 @@ local function isBuilding()
     end
     return false
 end
-local function onNoAimbotWhilstBuildingToggle(state)
+function onNoAimbotWhilstBuildingToggle(state)
     noAimbotWhilstBuildingActive = state
     if state then
         if not buildConn then
@@ -2228,13 +2444,13 @@ createCheckbox(weaponScroll, 0, yW, "Enable Target Locking", false)
 yW = yW + 28
 local freezeTargetActive = false
 local freezeTargetDisconnect = nil
-local function enableFreezeTarget()
+function enableFreezeTarget()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
     local RunService = game:GetService("RunService")
     local frozenTarget = nil
-    local function getClosestEnemy()
+    function getClosestEnemy()
         local closest, minDist = nil, math.huge
         for _, player in ipairs(Players:GetPlayers()) do
             if player ~= LocalPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") and player.Character:FindFirstChild("Humanoid") and player.Character.Humanoid.Health > 0 then
@@ -2278,7 +2494,7 @@ local function enableFreezeTarget()
         end
     end
 end
-local function onFreezeTargetToggle(state)
+function onFreezeTargetToggle(state)
     if state then
         if not freezeTargetActive then
             freezeTargetActive = true
@@ -2298,7 +2514,7 @@ local noclipActive = false
 local noclipConn = nil
 local noclipCharConn = nil
 local noclipDescConn = nil
-local function enableNoclip()
+function enableNoclip()
     if noclipConn then return end -- já está ativo
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
@@ -2309,7 +2525,7 @@ local function enableNoclip()
     local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
     if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.Physics) end
     -- Apply noclip to current character parts once and hook for new parts
-    local function applyNoclipToCharacter(char)
+    function applyNoclipToCharacter(char)
         if not char then return end
         for _, part in ipairs(char:GetDescendants()) do
             if part:IsA("BasePart") then
@@ -2351,7 +2567,7 @@ local function enableNoclip()
         end
     end)
 end
-local function disableNoclip()
+function disableNoclip()
     if noclipConn then
         noclipConn:Disconnect()
         noclipConn = nil
@@ -2370,7 +2586,7 @@ local function disableNoclip()
         if humanoid then humanoid:ChangeState(Enum.HumanoidStateType.GettingUp) end
     end
 end
-local function onNoclipToggle(state)
+function onNoclipToggle(state)
     noclipActive = state
     if state then
         enableNoclip()
@@ -2383,7 +2599,7 @@ yW = yW + 28
 -- Funções e conteúdo do painel Settings
 -- Funções auxiliares para FOV (área de configurações)
 local drawFovActive = false
-local function createFovCircle()
+function createFovCircle()
     if not fovCircle then
         local Camera = workspace.CurrentCamera
         fovCircle = safeDrawingNew("Circle")
@@ -2397,13 +2613,13 @@ local function createFovCircle()
         end
     end
 end
-local function destroyFovCircle()
+function destroyFovCircle()
     if fovCircle then
         fovCircle:Remove()
         fovCircle = nil
     end
 end
-local function onDrawFovToggle(state)
+function onDrawFovToggle(state)
     drawFovActive = state
     if drawFovActive then
         createFovCircle()
@@ -2439,7 +2655,7 @@ end)
 
 -- Dependências globais para funções utilitárias
 -- math já é global, use diretamente
-local yS = 4
+yS = 4
 
 -- Dropdown Targets
 -- Adiciona opção 'All Enemies' ao dropdown
@@ -2451,7 +2667,7 @@ end)
 yS = yS + 40 -- Espaço extra para garantir separação visual
 
 -- Função para mini lista e botão de puxar arma no final do painel de Settings
-local function getWeaponsList()
+function getWeaponsList()
     local containers = {
         game:GetService("ReplicatedStorage"),
         game:GetService("Workspace"),
@@ -2473,7 +2689,7 @@ local function getWeaponsList()
     return armas
 end
 
-local function addWeaponSelectorWeaponMods()
+function addWeaponSelectorWeaponMods()
     local weaponDropdown, getSelectedWeapon, selectedWeapon
     weaponDropdown, getSelectedWeapon = createDropdown(weaponScroll, 0, yW, "Selecionar Arma", getWeaponsList(), 1, function(idx, val)
         selectedWeapon = val
@@ -2491,7 +2707,7 @@ local function addWeaponSelectorWeaponMods()
     puxarArmaBtn.TextSize = 15
     puxarArmaBtn.AutoButtonColor = true
 
-    local function giveWeaponToLocalPlayer(weaponName)
+    function giveWeaponToLocalPlayer(weaponName)
         local containers = {
             game:GetService("ReplicatedStorage"),
             game:GetService("Workspace"),
@@ -2512,15 +2728,12 @@ local function addWeaponSelectorWeaponMods()
                 return true
             end
         end
-        -- Tenta RemoteEvent
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        -- Tenta RemoteEvent/RemoteFunction em serviços comuns
         local remoteNames = {"GiveGun", "GiveWeapon", "WeaponEvent", "GunEvent", "AddWeapon"}
-        for _, remoteName in ipairs(remoteNames) do
-            local remote = ReplicatedStorage:FindFirstChild(remoteName)
-            if remote and remote:IsA("RemoteEvent") then
-                fireServerBypass(remote, weaponName)
-                return true
-            end
+        local remote = findRemoteByNames(remoteNames)
+        if remote then
+            fireServerBypass(remote, weaponName)
+            return true
         end
         return false
     end
@@ -2614,7 +2827,7 @@ do
     applyAllBtn.Parent = weaponScroll
     yW = yW + 36
 
-    local function findToolInstancesByName(name)
+    function findToolInstancesByName(name)
         local results = {}
         local containers = {game:GetService("ReplicatedStorage"), game:GetService("Workspace"), game:GetService("StarterPack")}
         for _, c in ipairs(containers) do
@@ -2643,7 +2856,7 @@ do
     local localClones = {}
     local Players = game:GetService("Players")
 
-    local function applySkinToTool(tool, preset)
+    function applySkinToTool(tool, preset)
         if not tool then return end
         pcall(function()
             backupTool(tool)
@@ -2687,7 +2900,7 @@ do
         end)
     end
 
-    local function applySkinByName(weaponName, preset)
+    function applySkinByName(weaponName, preset)
         local instances = findToolInstancesByName(weaponName)
         for _, inst in ipairs(instances) do
             applySkinToTool(inst, preset)
@@ -2763,7 +2976,7 @@ do
     local skinList = {}
     local originalBackup = {} -- map tool -> list of {inst, prop, value}
 
-    local function addSkinToDB(s)
+    function addSkinToDB(s)
         if not s or s == "" then return end
         if type(s) ~= "string" then s = tostring(s) end
         if not skinDatabase[s] then
@@ -2772,7 +2985,7 @@ do
         end
     end
 
-    local function scanForSkins()
+    function scanForSkins()
         skinDatabase = {}
         skinList = {}
         local containers = {game:GetService("ReplicatedStorage"), game:GetService("Workspace"), game:GetService("StarterPack")}
@@ -2806,7 +3019,7 @@ do
         return skinList
     end
 
-    local function backupTool(tool)
+    function backupTool(tool)
         if not tool or originalBackup[tool] then return end
         originalBackup[tool] = {}
         for _, d in ipairs(tool:GetDescendants()) do
@@ -2824,7 +3037,7 @@ do
         end
     end
 
-    local function applyPresetToInstance(inst, preset)
+    function applyPresetToInstance(inst, preset)
         if not inst or not preset then return end
         pcall(function()
             if preset.type == "color" and preset.color then
@@ -2844,7 +3057,7 @@ do
         end)
     end
 
-    local function restoreAllBackups()
+    function restoreAllBackups()
         for tool, map in pairs(originalBackup) do
             for inst, props in pairs(map) do
                 pcall(function()
@@ -3012,13 +3225,13 @@ end
 
 -- Espectar Player (telar)
 local spectateConn = nil
-local function spectatePlayer(state)
+function spectatePlayer(state)
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local Camera = workspace.CurrentCamera
     if spectateConn then spectateConn:Disconnect() spectateConn = nil end
     if state and selectedPlayer then
-        local function updateSpectate()
+        function updateSpectate()
             local target = Players:FindFirstChild(selectedPlayer)
             if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
                 Camera.CameraSubject = target.Character.HumanoidRootPart
@@ -3036,18 +3249,15 @@ createCheckbox(settingsScroll, 0, yS, "Espectar Player", false, spectatePlayer)
 yS = yS + 28
 
 -- Teleportar até o player selecionado
-local function teleportToPlayer(state)
+function teleportToPlayer(state)
     if state and selectedPlayer then
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local Players = game:GetService("Players")
         local LocalPlayer = Players.LocalPlayer
         local remoteNames = {"TeleportToPlayer", "TeleportEvent", "TPEvent", "Teleport", "TPToPlayer"}
-        for _, remoteName in ipairs(remoteNames) do
-            local remote = ReplicatedStorage:FindFirstChild(remoteName)
-            if remote and remote:IsA("RemoteEvent") then
-                fireServerBypass(remote, selectedPlayer)
-                return
-            end
+        local remote = findRemoteByNames(remoteNames)
+        if remote then
+            fireServerBypass(remote, selectedPlayer)
+            return
         end
         -- Fallback local
         local target = Players:FindFirstChild(selectedPlayer)
@@ -3060,18 +3270,15 @@ createCheckbox(settingsScroll, 0, yS, "Teleportar até Player", false, teleportT
 yS = yS + 28
 
 -- Trazer o player selecionado até você
-local function bringPlayerToMe(state)
+function bringPlayerToMe(state)
     if state and selectedPlayer then
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local Players = game:GetService("Players")
         local LocalPlayer = Players.LocalPlayer
         local remoteNames = {"BringPlayer", "BringEvent", "BringToMe", "Bring", "TPHereEvent"}
-        for _, remoteName in ipairs(remoteNames) do
-            local remote = ReplicatedStorage:FindFirstChild(remoteName)
-            if remote and remote:IsA("RemoteEvent") then
-                fireServerBypass(remote, selectedPlayer)
-                return
-            end
+        local remote = findRemoteByNames(remoteNames)
+        if remote then
+            fireServerBypass(remote, selectedPlayer)
+            return
         end
         -- Fallback local
         local target = Players:FindFirstChild(selectedPlayer)
@@ -3086,19 +3293,19 @@ yS = yS + 28
 -- God Mode (Imortalidade)
 local godModeActive = false
 local godModeConn = nil
-local function setGodMode(state)
+function setGodMode(state)
     godModeActive = state
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     if godModeConn then godModeConn:Disconnect() godModeConn = nil end
     if state then
-        local function onHealthChanged(health)
+        function onHealthChanged(health)
             if godModeActive and health < 100 then
                 local humanoid = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid then humanoid.Health = humanoid.MaxHealth end
             end
         end
-        local function connectHumanoid()
+        function connectHumanoid()
             if LocalPlayer.Character then
                 local humanoid = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
                 if humanoid then
@@ -3139,7 +3346,7 @@ local distSlider, getDistValue = createSlider(settingsScroll, 0, yS, "Distance",
 yS = yS + 36
 
 -- Mini lista de jogadores
-local function getPlayersList()
+function getPlayersList()
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
     local list = {}
@@ -3151,7 +3358,7 @@ local function getPlayersList()
     return list
 end
 local selectedPlayer = nil
-local function onPlayerSelect(idx, val)
+function onPlayerSelect(idx, val)
     selectedPlayer = val
 end
 local playerDropdown, getSelectedPlayer = createDropdown(settingsScroll, 0, yS, "Selecionar Player", getPlayersList(), 1, onPlayerSelect)
@@ -3160,17 +3367,14 @@ yS = yS + 32
 -- Função: Congelar Player
 
 local frozenPlayers = {}
-local function freezeSelectedPlayer(state)
+function freezeSelectedPlayer(state)
     if not selectedPlayer then return end
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
     local remoteNames = {"FreezePlayer", "FreezeEvent", "Freeze", "AnchorPlayer", "AnchorEvent"}
-    for _, remoteName in ipairs(remoteNames) do
-        local remote = ReplicatedStorage:FindFirstChild(remoteName)
-        if remote and remote:IsA("RemoteEvent") then
-            fireServerBypass(remote, selectedPlayer, state)
-            return
-        end
+    local remote = findRemoteByNames(remoteNames)
+    if remote then
+        fireServerBypass(remote, selectedPlayer, state)
+        return
     end
     -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
@@ -3193,7 +3397,7 @@ createCheckbox(settingsScroll, 0, yS, "Congelar Player", false, freezeSelectedPl
 yS = yS + 28
 
 -- Função: Clonar Aparência
-local function cloneAppearance()
+function cloneAppearance()
     if not selectedPlayer then return end
     local Players = game:GetService("Players")
     local LocalPlayer = Players.LocalPlayer
@@ -3217,17 +3421,14 @@ end)
 yS = yS + 28
 
 -- Função: Matar Player
-local function killSelectedPlayer()
+function killSelectedPlayer()
     if not selectedPlayer then return end
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
     local remoteNames = {"KillPlayer", "KillEvent", "Kill", "EliminatePlayer", "EliminateEvent"}
-    for _, remoteName in ipairs(remoteNames) do
-        local remote = ReplicatedStorage:FindFirstChild(remoteName)
-        if remote and remote:IsA("RemoteEvent") then
-            fireServerBypass(remote, selectedPlayer)
-            return
-        end
+    local remote = findRemoteByNames(remoteNames)
+    if remote then
+        fireServerBypass(remote, selectedPlayer)
+        return
     end
     -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
@@ -3243,17 +3444,14 @@ yS = yS + 28
 -- Função: Prender Player
 
 local jailedPlayers = {}
-local function jailSelectedPlayer(state)
+function jailSelectedPlayer(state)
     if not selectedPlayer then return end
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local Players = game:GetService("Players")
     local remoteNames = {"JailPlayer", "JailEvent", "Jail", "PrisonPlayer", "PrisonEvent"}
-    for _, remoteName in ipairs(remoteNames) do
-        local remote = ReplicatedStorage:FindFirstChild(remoteName)
-        if remote and remote:IsA("RemoteEvent") then
-            fireServerBypass(remote, selectedPlayer, state)
-            return
-        end
+    local remote = findRemoteByNames(remoteNames)
+    if remote then
+        fireServerBypass(remote, selectedPlayer, state)
+        return
     end
     -- Fallback local
     local target = Players:FindFirstChild(selectedPlayer)
@@ -3314,16 +3512,13 @@ puxarBtn.AutoButtonColor = true
 
 
 
-local function setLocalPlayerMoney(val)
+function setLocalPlayerMoney(val)
     -- Tenta via RemoteEvent (GiveMoney, CashEvent, AddMoney, etc)
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
     local remoteNames = {"GiveMoney", "CashEvent", "AddMoney", "SetMoney", "MoneyEvent"}
-    for _, remoteName in ipairs(remoteNames) do
-        local remote = ReplicatedStorage:FindFirstChild(remoteName)
-        if remote and remote:IsA("RemoteEvent") then
-            fireServerBypass(remote, val)
-            return
-        end
+    local remote = findRemoteByNames(remoteNames)
+    if remote then
+        fireServerBypass(remote, val)
+        return
     end
     -- Se não existir RemoteEvent, tenta local (visual)
     local Players = game:GetService("Players")
@@ -3348,9 +3543,393 @@ puxarBtn.MouseButton1Click:Connect(function()
 end)
 yS = yS + 32
 
+-- Vehicle tools
+local vehicleColor = Color3.fromRGB(0, 200, 255)
+local vehicleTargetInput = nil
+
+function findBasePart(obj)
+    if not obj then return nil end
+    if obj:IsA("BasePart") then
+        return obj
+    end
+    for _, child in ipairs(obj:GetChildren()) do
+        local part = findBasePart(child)
+        if part then
+            return part
+        end
+    end
+    return nil
+end
+
+function getClosestVehicleModel()
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if not LocalPlayer or not LocalPlayer.Character then return nil end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local closest, minDist = nil, math.huge
+    for _, vehicle in ipairs(getVehicleModels()) do
+        local primary = vehicle.PrimaryPart or findBasePart(vehicle)
+        if primary then
+            local dist = (primary.Position - hrp.Position).Magnitude
+            if dist < minDist then
+                minDist = dist
+                closest = vehicle
+            end
+        end
+    end
+    return closest
+end
+
+function getVehicleByName(name)
+    if not name or name == "" then return nil end
+    local lowerName = tostring(name):lower()
+    for _, vehicle in ipairs(getVehicleModels()) do
+        local vehicleName = tostring(vehicle.Name):lower()
+        if vehicleName == lowerName or vehicleName:find(lowerName, 1, true) then
+            return vehicle
+        end
+    end
+    return nil
+end
+
+function getSelectedVehicle()
+    local name = getVehicleOption()
+    if name == "Selecionar Veículo" or name == "" then
+        local closest = getClosestVehicleModel()
+        if closest then print("[Vehicle] Usando veículo mais próximo: " .. closest.Name) end
+        return closest
+    end
+    local vehicle = getVehicleByName(name)
+    if vehicle then
+        print("[Vehicle] Veículo selecionado: " .. vehicle.Name)
+        return vehicle
+    end
+    local closest = getClosestVehicleModel()
+    if closest then print("[Vehicle] Veículo não encontrado, usando mais próximo: " .. closest.Name) end
+    return closest
+end
+
+function setVehicleColor(vehicle, color)
+    if not vehicle or not color then return end
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("BasePart") or part:IsA("MeshPart") then
+            pcall(function()
+                part.Color = color
+            end)
+        end
+    end
+end
+
+function bringVehicleToPlayer(vehicle)
+    if not vehicle then print("[Vehicle] Nenhum veículo selecionado") return end
+    print("[Vehicle] Trazendo veículo: " .. vehicle.Name)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if not LocalPlayer or not LocalPlayer.Character then print("[Vehicle] Jogador ou personagem inválido") return end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then print("[Vehicle] HumanoidRootPart não encontrado") return end
+    local primary = vehicle.PrimaryPart or findBasePart(vehicle)
+    if not primary then print("[Vehicle] Parte primária não encontrada") return end
+    local targetCFrame = hrp.CFrame * CFrame.new(0, 0, -10)
+    pcall(function()
+        vehicle:SetPrimaryPartCFrame(targetCFrame)
+        print("[Vehicle] Veículo teleportado com sucesso")
+    end)
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function() part.Anchored = false end)
+        end
+    end
+end
+
+function tuneVehicle(vehicle)
+    if not vehicle then print("[Vehicle] Nenhum veículo selecionado") return end
+    print("[Vehicle] Tunando veículo: " .. vehicle.Name)
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("VehicleSeat") then
+            pcall(function()
+                if part.MaxSpeed then part.MaxSpeed = math.max(part.MaxSpeed, 250) print("[Vehicle] Velocidade aumentada") end
+                if part.MaxTorque then part.MaxTorque = part.MaxTorque end
+                if part.Throttle then part.Throttle = 1 end
+            end)
+        end
+    end
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.Anchored = false
+                part.CanCollide = true
+            end)
+        end
+    end
+    print("[Vehicle] Veículo tunado")
+end
+
+function repairVehicle(vehicle)
+    if not vehicle then print("[Vehicle] Nenhum veículo selecionado") return end
+    print("[Vehicle] Reparando veículo: " .. vehicle.Name)
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("BasePart") then
+            pcall(function()
+                part.Anchored = false
+                part.CanCollide = true
+                if part.Transparency > 0 then part.Transparency = 0 end
+                if part:IsA("MeshPart") and part.TextureID == "" then part.TextureID = part.TextureID end
+            end)
+        elseif part:IsA("BoolValue") then
+            if tostring(part.Name):lower():find("lock") then
+                pcall(function() part.Value = false end)
+            end
+        end
+    end
+    print("[Vehicle] Veículo reparado")
+end
+
+function forceEnterVehicle(vehicle)
+    if not vehicle then print("[Vehicle] Nenhum veículo selecionado") return end
+    print("[Vehicle] Forçando entrada no veículo: " .. vehicle.Name)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    if not LocalPlayer or not LocalPlayer.Character then print("[Vehicle] Jogador inválido") return end
+    local hrp = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if not hrp then print("[Vehicle] HumanoidRootPart não encontrado") return end
+    local seat
+    for _, part in ipairs(vehicle:GetDescendants()) do
+        if part:IsA("VehicleSeat") or part:IsA("Seat") then
+            seat = part
+            break
+        end
+    end
+    if seat then
+        pcall(function()
+            hrp.CFrame = seat.CFrame * CFrame.new(0, 1, 0)  -- Teleporta para cima do seat
+            wait(0.1)
+            LocalPlayer.Character.Humanoid:Sit(seat)  -- Tenta sentar
+        end)
+        print("[Vehicle] Entrada forçada tentada")
+    else
+        print("[Vehicle] Nenhum seat encontrado no veículo")
+    end
+end
+
+function remoteVehicleAction(vehicle, names, ...)
+    local remote = findRemoteByNames(names)
+    if not remote then return false end
+    if vehicle then
+        fireServerBypass(remote, vehicle, ...)
+    else
+        fireServerBypass(remote, ...)
+    end
+    return true
+end
+
+function spawnVehicleByName(name)
+    if not name or name == "" then print("[Vehicle] Nome inválido para spawn") return end
+    print("[Vehicle] Spawning veículo: " .. name)
+    local searchRoots = {game:GetService("ReplicatedStorage"), game:GetService("ServerStorage"), game:GetService("StarterPack"), workspace}
+    for _, root in ipairs(searchRoots) do
+        if root then
+            local found = root:FindFirstChild(name, true)
+            if found and found:IsA("Model") then
+                local ok, clone = pcall(function() return found:Clone() end)
+                if ok and clone then
+                    clone.Parent = workspace
+                    local player = game:GetService("Players").LocalPlayer
+                    local hrp = player and player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                    local primary = clone.PrimaryPart or findBasePart(clone)
+                    if primary and hrp then
+                        pcall(function() clone:SetPrimaryPartCFrame(hrp.CFrame * CFrame.new(0, 0, -10)) end)
+                    end
+                    print("[Vehicle] Veículo spawned com sucesso")
+                    return clone
+                end
+            end
+        end
+    end
+    -- fallback remoto
+    remoteVehicleAction(nil, {"SpawnVehicle", "VehicleSpawn", "CarSpawn", "SpawnCar", "SpawnVehicleEvent"}, name)
+    print("[Vehicle] Tentando spawn via remote")
+    return nil
+end
+
+function destroyVehicle(vehicle)
+    if not vehicle then print("[Vehicle] Nenhum veículo selecionado") return end
+    print("[Vehicle] Destruindo veículo: " .. vehicle.Name)
+    if remoteVehicleAction(vehicle, {"DeleteVehicle", "RemoveVehicle", "DestroyVehicle", "VehicleDelete", "CarDelete"}) then
+        print("[Vehicle] Veículo destruído via remote")
+        return
+    end
+    pcall(function() vehicle:Destroy() end)
+    print("[Vehicle] Veículo destruído localmente")
+end
+
+function getVehicleLabelText()
+    local target = getSelectedVehicle()
+    return target and tostring(target.Name) or "Nenhum veículo"
+end
+
+local vehicleToolsTitle = Instance.new("TextLabel")
+vehicleToolsTitle.Parent = settingsScroll
+vehicleToolsTitle.Position = UDim2.new(0, 0, 0, yS)
+vehicleToolsTitle.Size = UDim2.new(0, 170, 0, 24)
+vehicleToolsTitle.BackgroundTransparency = 1
+vehicleToolsTitle.Text = "Vehicle Tools"
+vehicleToolsTitle.Font = Enum.Font.GothamBold
+vehicleToolsTitle.TextSize = 16
+vehicleToolsTitle.TextColor3 = Color3.fromRGB(140, 220, 255)
+vehicleToolsTitle.TextXAlignment = Enum.TextXAlignment.Left
+
+yS = yS + 28
+
+-- Lista de veículos para o dropdown
+local vehicleOptionsList = {}
+function updateVehicleList()
+    vehicleOptionsList = {"Selecionar Veículo"}
+    local vehicles = getVehicleModels()
+    for _, vehicle in ipairs(vehicles) do
+        table.insert(vehicleOptionsList, vehicle.Name)
+    end
+    print("[Vehicle] Lista de veículos atualizada: " .. #vehicleOptionsList - 1 .. " veículos encontrados")
+end
+updateVehicleList() -- Atualizar inicialmente
+
+local vehicleDropdown, getVehicleOption = createDropdown(settingsScroll, 0, yS, "Veículos", vehicleOptionsList, 1, function(idx, val)
+    -- Nada especial, apenas seleciona
+end)
+
+yS = yS + 32
+
+local vehicleColorBox = createColorBox(settingsScroll, 0, yS, "Cor Veículo", vehicleColor, function(newColor)
+    vehicleColor = newColor
+end)
+yS = yS + 28
+
+function makeVehicleButton(text, x, y, color)
+    local btn = Instance.new("TextButton")
+    btn.Parent = settingsScroll
+    btn.Position = UDim2.new(0, x, 0, y)
+    btn.Size = UDim2.new(0, 140, 0, 26)
+    btn.BackgroundColor3 = color or Color3.fromRGB(20, 20, 20)
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 14
+    btn.Text = text
+    btn.AutoButtonColor = true
+    return btn
+end
+
+local puxarVeiculoBtn = makeVehicleButton("Puxar Veículo", 0, yS, Color3.fromRGB(10, 160, 220))
+local cloneVeiculoBtn = makeVehicleButton("Clonar Veículo", 150, yS, Color3.fromRGB(40, 120, 220))
+local destrancarVeiculoBtn = makeVehicleButton("Destrancar Veículo", 0, yS + 32, Color3.fromRGB(40, 180, 40))
+local trancarVeiculoBtn = makeVehicleButton("Trancar Veículo", 150, yS + 32, Color3.fromRGB(200, 80, 40))
+local spawnVeiculoBtn = makeVehicleButton("Spawnar Veículo", 0, yS + 64, Color3.fromRGB(120, 40, 220))
+local deleteVeiculoBtn = makeVehicleButton("Delete Veículo", 150, yS + 64, Color3.fromRGB(200, 40, 40))
+local mudarCorVeiculoBtn = makeVehicleButton("Mudar Cor", 0, yS + 96, Color3.fromRGB(255, 165, 0))
+local entrarVeiculoBtn = makeVehicleButton("Entrar no Veículo", 150, yS + 96, Color3.fromRGB(0, 255, 150))
+local tunarVeiculoBtn = makeVehicleButton("Tunar Veículo", 0, yS + 128, Color3.fromRGB(40, 200, 200))
+local repararVeiculoBtn = makeVehicleButton("Reparar Veículo", 150, yS + 128, Color3.fromRGB(20, 220, 120))
+
+puxarVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        bringVehicleToPlayer(vehicle)
+    end
+end)
+
+cloneVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        local ok, clone = pcall(function() return vehicle:Clone() end)
+        if ok and clone then
+            clone.Parent = workspace
+            local primary = clone.PrimaryPart or findBasePart(clone)
+            if primary then
+                pcall(function()
+                    clone:SetPrimaryPartCFrame(primary.CFrame * CFrame.new(5, 0, 0))
+                end)
+            end
+        end
+    end
+end)
+
+destrancarVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        print("[Vehicle] Tentando destrancar: " .. vehicle.Name)
+        if not remoteVehicleAction(vehicle, {"UnlockVehicle", "VehicleUnlock", "CarUnlock", "UnlockCar", "UnLockVehicleEvent", "Unlock", "UnLock"}) then
+            lockUnlockVehicle(vehicle, false)
+        else
+            print("[Vehicle] Destrancado via remote")
+        end
+    else
+        print("[Vehicle] Nenhum veículo selecionado para destrancar")
+    end
+end)
+
+trancarVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        print("[Vehicle] Tentando trancar: " .. vehicle.Name)
+        if not remoteVehicleAction(vehicle, {"LockVehicle", "VehicleLock", "CarLock", "LockCar", "LockVehicleEvent", "Lock"}) then
+            lockUnlockVehicle(vehicle, true)
+        else
+            print("[Vehicle] Trancado via remote")
+        end
+    else
+        print("[Vehicle] Nenhum veículo selecionado para trancar")
+    end
+end)
+
+spawnVeiculoBtn.MouseButton1Click:Connect(function()
+    local name = getVehicleOption()
+    if name ~= "Selecionar Veículo" then
+        spawnVehicleByName(name)
+    end
+end)
+
+deleteVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    destroyVehicle(vehicle)
+end)
+
+mudarCorVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        if not remoteVehicleAction(vehicle, {"SetVehicleColor", "VehicleColor", "CarColor", "ChangeVehicleColor"}, vehicleColor) then
+            setVehicleColor(vehicle, vehicleColor)
+        end
+    end
+end)
+
+entrarVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    forceEnterVehicle(vehicle)
+end)
+
+tunarVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        if not remoteVehicleAction(vehicle, {"TuneVehicle", "VehicleTune", "CarTune", "UpgradeVehicle", "VehicleUpgrade"}) then
+            tuneVehicle(vehicle)
+        end
+    end
+end)
+
+repararVeiculoBtn.MouseButton1Click:Connect(function()
+    local vehicle = getSelectedVehicle()
+    if vehicle then
+        if not remoteVehicleAction(vehicle, {"RepairVehicle", "VehicleRepair", "CarRepair", "FixVehicle"}) then
+            repairVehicle(vehicle)
+        end
+    end
+end)
+
+yS = yS + 200
+
 -- No final do painel de Settings, adicionar o checkbox do Bypass
 yS = yS + 8
-local function onBypassCheckbox(state)
+function onBypassCheckbox(state)
     BypassEnabled = state
     if state then
         print("[Bypass] Ativado: Nenhum dado será enviado ao servidor.")
@@ -3384,7 +3963,7 @@ gui:GetPropertyChangedSignal("Visible"):Connect(function()
 end)
 
 -- Função para desativar/limpar todas as funções do mod menu
-local function cleanupModMenu()
+function cleanupModMenu()
     -- Exemplo de limpeza (adicione aqui todas as funções que precisam ser desativadas):
     -- Tentar desconectar/limpar todos os handlers conhecidos
     if espDisconnect and type(espDisconnect) == "function" then
@@ -3429,4 +4008,3 @@ aimbotBtn.MouseButton1Click:Connect(function()
     selectAimbotTab()
 end)
 attackPanel.Visible = true
-

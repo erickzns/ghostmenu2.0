@@ -23,10 +23,39 @@ local BypassMode = "block_all"
 local oldNamecall
 oldNamecall = hookmetamethod and hookmetamethod(game, "__namecall", function(self, ...)
 	local method = getnamecallmethod()
+	local args = {...}
+	
+	-- Sistema de Silent Aim (Intercepta Raycasts e Remotes de tiro)
+	if S.silentAim and BypassEnabled and not checkcaller() then
+		if method == "FireServer" or method == "InvokeServer" then
+			-- Tentativa genérica de modificar Hit/Position/CFrame em argumentos de remotes de tiro
+			if S.aimbotTarget and S.aimbotTarget.Parent then
+				for i, arg in pairs(args) do
+					if typeof(arg) == "Vector3" then
+						args[i] = S.aimbotTarget.Position
+					elseif typeof(arg) == "CFrame" then
+						args[i] = CFrame.new(args[i].Position, S.aimbotTarget.Position)
+					elseif typeof(arg) == "table" and arg.Hit then
+						arg.Hit = S.aimbotTarget.Position
+					end
+				end
+				return oldNamecall(self, unpack(args))
+			end
+		end
+		
+		-- Redirecionar Mouse.Hit e Mouse.Target (usado por jogos clássicos e ferramentas antigas)
+		if method == "Hit" or method == "Target" then
+			if S.aimbotTarget and S.aimbotTarget.Parent then
+				if method == "Hit" then return CFrame.new(S.aimbotTarget.Position) end
+				if method == "Target" then return S.aimbotTarget end
+			end
+		end
+	end
+	-- Bypass Padrão
 	if BypassEnabled and not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
 		if BypassMode == "block_all" then return nil end
 	end
-	return oldNamecall(self, ...)
+	return oldNamecall(self, unpack(args))
 end) or function() end
 local stealthEnabled = false
 local originalPrint = print
@@ -41,9 +70,10 @@ local S = {
 	-- Configurações Gerais de Alvo
 	targetTeam = "Todos", aimbotPart = "Head",
 	-- Combat / Attack
-	aimbot = false, aimbotFOV = 120, aimbotSmooth = 8,
-	triggerbot = false, autoHeadshot = false, silentAim = false,
+	aimbot = false, aimbotFOV = 120, aimbotSmooth = 8, aimbotMethod = "Camera",
+	triggerbot = false, triggerDelay = 0, autoHeadshot = false, silentAim = false,
 	hitboxExpander = false, hitboxSize = 10,
+	antiAim = false, killAura = false,
 	
 	-- Weapon
 	noRecoil = false, noSpread = false, infAmmo = false, rapidFire = false, dmgMult = 1, wallbang = false,
@@ -52,16 +82,18 @@ local S = {
 	espHighlight = false, espBox = false, espTracer = false, espSkeleton = false, espName = false,
 	fovCircle = false, fovCircleColor = "Cyan", fullbright = false,
 	espBoxColor = "Red", espTracerColor = "Red", espSkeletonColor = "White", espNameColor = "White",
+	chams = false, chamsColor = "Red", worldFOV = 70, timeOfDay = "Normal", thirdPerson = false, thirdPersonDist = 10,
 	
 	-- Misc / Movement
 	speed = false, speedVal = 50, superJump = false, fly = false, noclip = false, godMode = false,
-	spinbot = false, spinbotSpeed = 30, vehicleFly = false,
+	spinbot = false, spinbotSpeed = 30, vehicleFly = false, autoBhop = false, spider = false, antiAfk = false,
 	
 	-- Settings
 	mobileBtn = true,
 	
-	-- Objects
-	fovCircleObj = nil, flyBV = nil, flyBG = nil, vFlyBV = nil, vFlyBG = nil, espHighlighs = {}
+	-- Objects & Tracking
+	fovCircleObj = nil, flyBV = nil, flyBG = nil, vFlyBV = nil, vFlyBG = nil, espHighlighs = {},
+	aimbotTarget = nil
 }
 local colorMap = {
 	["Red"] = Color3.fromRGB(255, 40, 40), ["Green"] = Color3.fromRGB(40, 255, 40),
@@ -88,10 +120,43 @@ end
 -- ╚══════════════════════════════════════════════════════════════╝
 local gui = make("ScreenGui", { Name = "MagnataMenuRemastered", ResetOnSpawn = false, DisplayOrder = 9999, ZIndexBehavior = Enum.ZIndexBehavior.Global, IgnoreGuiInset = true, Parent = player:WaitForChild("PlayerGui") })
 local espContainer = make("Folder", { Name = "ESP_Drawings", Parent = gui })
+local notifContainer = make("Frame", { Size = UDim2.new(0, 250, 1, -20), Position = UDim2.new(1, -270, 0, 10), BackgroundTransparency = 1, Parent = gui })
+make("UIListLayout", {SortOrder = Enum.SortOrder.LayoutOrder, Padding = UDim.new(0, 5), VerticalAlignment = Enum.VerticalAlignment.Bottom, Parent = notifContainer})
 local main = make("Frame", { Size = UDim2.new(0, 820, 0, 520), Position = UDim2.new(0.5, -410, 0.5, -260), BackgroundColor3 = Color3.fromRGB(20, 20, 20), BorderSizePixel = 0, Visible = false, Parent = gui })
 make("UICorner", {CornerRadius = UDim.new(0, 8), Parent = main}); make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(50, 50, 50), Parent = main})
 make("UIGradient", { Color = ColorSequence.new{ ColorSequenceKeypoint.new(0, Color3.fromRGB(24, 24, 28)), ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 20, 24)) }, Parent = main })
-local title = make("TextLabel", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BorderSizePixel = 0, Text = " Ghost Menu by creator Magnata 2.0 (V7 MONSTER)", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = Color3.fromRGB(140, 220, 255), TextXAlignment = Enum.TextXAlignment.Center, Parent = main })
+-- Watermark Premium
+local watermark = make("Frame", { Size = UDim2.new(0, 300, 0, 24), Position = UDim2.new(0, 15, 0, 15), BackgroundColor3 = Color3.fromRGB(20, 20, 24), BorderSizePixel = 0, Parent = gui })
+make("UICorner", {CornerRadius = UDim.new(0, 4), Parent = watermark}); make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(0, 200, 255), Parent = watermark})
+local wmText = make("TextLabel", { Size = UDim2.new(1, -10, 1, 0), Position = UDim2.new(0, 5, 0, 0), BackgroundTransparency = 1, Text = "Ghost Menu V8 | FPS: 0 | Ping: 0ms", Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(220, 220, 220), TextXAlignment = Enum.TextXAlignment.Left, Parent = watermark })
+local rainbow = make("Frame", { Size = UDim2.new(1, 0, 0, 2), BackgroundColor3 = Color3.fromRGB(255, 255, 255), BorderSizePixel = 0, Parent = watermark })
+make("UIGradient", { Color = ColorSequence.new{ ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)), ColorSequenceKeypoint.new(0.33, Color3.fromRGB(0, 255, 0)), ColorSequenceKeypoint.new(0.66, Color3.fromRGB(0, 0, 255)), ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 0)) }, Parent = rainbow })
+local function notify(titleStr, textStr, duration)
+	local dur = duration or 3
+	local n = make("Frame", { Size = UDim2.new(1, 0, 0, 50), BackgroundColor3 = Color3.fromRGB(25, 25, 30), BackgroundTransparency = 1, Parent = notifContainer })
+	make("UICorner", {CornerRadius = UDim.new(0, 6), Parent = n})
+	local stroke = make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(0, 200, 255), Transparency = 1, Parent = n})
+	local accent = make("Frame", { Size = UDim2.new(0, 4, 1, 0), BackgroundColor3 = Color3.fromRGB(0, 200, 255), BackgroundTransparency = 1, BorderSizePixel = 0, Parent = n })
+	make("UICorner", {CornerRadius = UDim.new(0, 3), Parent = accent})
+	local t = make("TextLabel", { Size = UDim2.new(1, -15, 0, 20), Position = UDim2.new(0, 10, 0, 5), BackgroundTransparency = 1, Text = titleStr, Font = Enum.Font.GothamBold, TextSize = 14, TextColor3 = Color3.fromRGB(255, 255, 255), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, Parent = n })
+	local d = make("TextLabel", { Size = UDim2.new(1, -15, 0, 20), Position = UDim2.new(0, 10, 0, 25), BackgroundTransparency = 1, Text = textStr, Font = Enum.Font.Gotham, TextSize = 12, TextColor3 = Color3.fromRGB(180, 180, 180), TextTransparency = 1, TextXAlignment = Enum.TextXAlignment.Left, Parent = n })
+	
+	TweenService:Create(n, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+	TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 0.5}):Play()
+	TweenService:Create(accent, TweenInfo.new(0.3), {BackgroundTransparency = 0}):Play()
+	TweenService:Create(t, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+	TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = 0}):Play()
+	
+	task.delay(dur, function()
+		TweenService:Create(n, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.3), {Transparency = 1}):Play()
+		TweenService:Create(accent, TweenInfo.new(0.3), {BackgroundTransparency = 1}):Play()
+		TweenService:Create(t, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+		TweenService:Create(d, TweenInfo.new(0.3), {TextTransparency = 1}):Play()
+		task.wait(0.3); n:Destroy()
+	end)
+end
+local title = make("TextLabel", { Size = UDim2.new(1, 0, 0, 36), BackgroundColor3 = Color3.fromRGB(16, 16, 18), BorderSizePixel = 0, Text = " Ghost Menu by creator Magnata 2.0 (V8 ULTIMATE)", Font = Enum.Font.GothamBold, TextSize = 16, TextColor3 = Color3.fromRGB(140, 220, 255), TextXAlignment = Enum.TextXAlignment.Center, Parent = main })
 local closeBtn = make("TextButton", { Size = UDim2.new(0, 32, 0, 24), Position = UDim2.new(1, -38, 0, 6), BackgroundColor3 = Color3.fromRGB(32, 32, 32), Text = "✕", Font = Enum.Font.GothamBold, TextColor3 = Color3.fromRGB(140, 220, 255), BorderSizePixel = 0, Parent = main })
 make("UICorner", {CornerRadius = UDim.new(0, 6), Parent = closeBtn})
 closeBtn.MouseButton1Click:Connect(function() main.Visible = false end)
@@ -138,7 +203,12 @@ local function createCheckbox(parent, labelText, default, callback)
 	make("UICorner", {CornerRadius = UDim.new(0,6), Parent = box}); make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(50,50,55), Parent = box})
 	local check = make("Frame", { Size = UDim2.new(0, 14, 0, 14), Position = UDim2.new(0, 4, 0, 4), BackgroundColor3 = checked and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(24,24,28), BorderSizePixel = 0, Parent = box })
 	make("UICorner", {CornerRadius = UDim.new(0,4), Parent = check})
-	box.MouseButton1Click:Connect(function() checked = not checked; TweenService:Create(check, TweenInfo.new(0.15), {BackgroundColor3 = checked and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(24,24,28)}):Play(); if callback then callback(checked) end end)
+	box.MouseButton1Click:Connect(function() 
+		checked = not checked; 
+		TweenService:Create(check, TweenInfo.new(0.15), {BackgroundColor3 = checked and Color3.fromRGB(0, 200, 255) or Color3.fromRGB(24,24,28)}):Play(); 
+		if checked then notify("Module Toggled", labelText .. " foi Ativado", 2) else notify("Module Toggled", labelText .. " foi Desativado", 2) end
+		if callback then callback(checked) end 
+	end)
 end
 local function createCycleButton(parent, labelText, options, default, callback)
 	local idx = 1
@@ -170,6 +240,17 @@ local function createSlider(parent, labelText, min, max, default, callback)
 		end
 	end)
 end
+local function createButton(parent, labelText, callback)
+	local f = make("Frame", { Size = UDim2.new(1, -20, 0, 32), Position = UDim2.new(0, 10, 0, 0), BackgroundTransparency = 1, Parent = parent })
+	local btn = make("TextButton", { Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0, 4), BackgroundColor3 = Color3.fromRGB(24, 24, 28), Text = labelText, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.fromRGB(0, 200, 255), Parent = f })
+	make("UICorner", {CornerRadius = UDim.new(0,4), Parent = btn}); make("UIStroke", {Thickness = 1, Color = Color3.fromRGB(50,50,55), Parent = btn})
+	btn.MouseButton1Click:Connect(function() 
+		TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(0, 200, 255), TextColor3 = Color3.fromRGB(0,0,0)}):Play()
+		task.wait(0.1)
+		TweenService:Create(btn, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(24, 24, 28), TextColor3 = Color3.fromRGB(0, 200, 255)}):Play()
+		if callback then callback() end 
+	end)
+end
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║               SISTEMA DE ESP 2D AVANÇADO                     ║
 -- ╚══════════════════════════════════════════════════════════════╝
@@ -182,7 +263,9 @@ local function drawLine(line, p1, p2, thickness)
 end
 local function getEspCache(p)
 	if not espCache[p] then
-		local c = { box = {getLine(), getLine(), getLine(), getLine()}, tracer = getLine(), name = make("TextLabel", { BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1,1,1), TextStrokeTransparency = 0, AnchorPoint = Vector2.new(0.5, 1), ZIndex = 2, Visible = false, Parent = espContainer }), skeleton = {} }
+		local c = { box = {getLine(), getLine(), getLine(), getLine()}, tracer = getLine(), name = make("TextLabel", { BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1,1,1), TextStrokeTransparency = 0, AnchorPoint = Vector2.new(0.5, 1), ZIndex = 2, Visible = false, Parent = espContainer }), skeleton = {}, headCircle = make("Frame", { BackgroundTransparency = 1, AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 1, Visible = false, Parent = espContainer }) }
+		make("UICorner", {CornerRadius = UDim.new(0.5, 0), Parent = c.headCircle})
+		make("UIStroke", {Name = "Stroke", Thickness = 1.5, Parent = c.headCircle})
 		for i = 1, 15 do table.insert(c.skeleton, getLine()) end
 		espCache[p] = c
 	end
@@ -192,6 +275,7 @@ local function hideEsp(cache)
 	for _, l in ipairs(cache.box) do l.Visible = false end
 	cache.tracer.Visible = false; cache.name.Visible = false
 	for _, l in ipairs(cache.skeleton) do l.Visible = false end
+	if cache.headCircle then cache.headCircle.Visible = false end
 end
 local function updateEsp(p)
 	local cache = getEspCache(p)
@@ -243,6 +327,17 @@ local function updateEsp(p)
 				end
 			end
 		end
+		local headPos, headVis = camera:WorldToViewportPoint(head.Position)
+		if headVis then
+			local headTopPos, _ = camera:WorldToViewportPoint(head.Position + Vector3.new(0, 0.6, 0))
+			local radius = math.abs(headPos.Y - headTopPos.Y) * 2
+			cache.headCircle.Position = UDim2.new(0, headPos.X, 0, headPos.Y)
+			cache.headCircle.Size = UDim2.new(0, radius, 0, radius)
+			cache.headCircle.Stroke.Color = cSkel
+			cache.headCircle.Visible = true
+		else cache.headCircle.Visible = false end
+	else
+		if cache.headCircle then cache.headCircle.Visible = false end
 	end
 	for i = lineIdx, #cache.skeleton do cache.skeleton[i].Visible = false end
 end
@@ -253,7 +348,37 @@ local function refreshHighlightESP()
 		if isValidTarget(p) and p.Character then table.insert(S.espHighlighs, make("Highlight", {FillColor = Color3.fromRGB(255, 40, 40), Parent = p.Character})) end
 	end
 end
+local function applyChams(char, enabled)
+	if not char then return end
+	for _, p in ipairs(char:GetDescendants()) do
+		if p:IsA("BasePart") and p.Name ~= "HumanoidRootPart" then
+			if enabled then
+				if not p:FindFirstChild("OriginalMat") then
+					make("StringValue", {Name = "OriginalMat", Value = tostring(p.Material), Parent = p})
+					make("Color3Value", {Name = "OriginalCol", Value = p.Color, Parent = p})
+				end
+				p.Material = Enum.Material.ForceField
+				p.Color = colorMap[S.chamsColor] or Color3.new(1,0,0)
+			else
+				if p:FindFirstChild("OriginalMat") then
+					p.Material = Enum.Material[string.split(p.OriginalMat.Value, ".")[3]] or Enum.Material.Plastic
+					p.Color = p.OriginalCol.Value
+					p.OriginalMat:Destroy(); p.OriginalCol:Destroy()
+				end
+			end
+		end
+	end
+end
+local frames, lastTick = 0, tick()
 RunService.RenderStepped:Connect(function()
+	frames = frames + 1
+	if tick() - lastTick >= 1 then
+		local ping = game:GetService("Stats").Network.ServerStatsItem["Data Ping"]:GetValue()
+		wmText.Text = string.format("Ghost Menu V8 | FPS: %d | Ping: %dms", frames, ping)
+		frames = 0; lastTick = tick()
+		local mw = math.clamp(wmText.TextBounds.X + 20, 200, 400)
+		TweenService:Create(watermark, TweenInfo.new(0.5), {Size = UDim2.new(0, mw, 0, 24)}):Play()
+	end
 	for _, p in ipairs(Players:GetPlayers()) do
 		if isValidTarget(p) then
 			if (S.espBox or S.espTracer or S.espSkeleton or S.espName) then updateEsp(p) elseif espCache[p] then hideEsp(espCache[p]) end
@@ -307,10 +432,55 @@ RunService.Heartbeat:Connect(function()
 		if S.speed then hum.WalkSpeed = S.speedVal end
 		if S.superJump then hum.JumpPower = 120; hum.UseJumpPower = true end
 		if S.godMode then hum.Health = hum.MaxHealth end
+		
+		-- Auto Bhop
+		if S.autoBhop and UIS:IsKeyDown(Enum.KeyCode.Space) then
+			if hum.FloorMaterial ~= Enum.Material.Air then hum:ChangeState(Enum.HumanoidStateType.Jumping) end
+		end
 	end
+	
 	if S.noclip then for _, p in ipairs(char:GetDescendants()) do if p:IsA("BasePart") then p.CanCollide = false end end end
 	
+	if S.spider and rp then
+		local hrpLook = rp.CFrame.LookVector
+		local ray = Ray.new(rp.Position, hrpLook * 3)
+		local hit, pos = WS:FindPartOnRayWithIgnoreList(ray, {char})
+		if hit then
+			if not S.flyBV then S.flyBV = make("BodyVelocity", {MaxForce = Vector3.new(1e6,1e6,1e6), Velocity = Vector3.new(0, 50, 0), Parent = rp}) end
+		else
+			if S.flyBV and not S.fly then S.flyBV:Destroy(); S.flyBV = nil end
+		end
+	end
+	
 	if S.spinbot and rp then rp.CFrame = rp.CFrame * CFrame.Angles(0, math.rad(S.spinbotSpeed), 0) end
+	if S.antiAim and rp then rp.CFrame = rp.CFrame * CFrame.Angles(math.rad(math.random(-45, 45)), math.rad(math.random(-180, 180)), math.rad(math.random(-45, 45))) end
+	
+	-- Kill Aura
+	if S.killAura and rp then
+		for _, p in ipairs(Players:GetPlayers()) do
+			if isValidTarget(p) and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+				local d = (p.Character.HumanoidRootPart.Position - rp.Position).Magnitude
+				if d < 15 then
+					-- Força colisão violenta / tentativa genérica de dano
+					firetouchinterest(rp, p.Character.HumanoidRootPart, 0)
+					firetouchinterest(rp, p.Character.HumanoidRootPart, 1)
+				end
+			end
+		end
+	end
+	
+	-- World FOV & 3rd Person
+	if S.worldFOV ~= 70 then camera.FieldOfView = S.worldFOV end
+	if S.thirdPerson then 
+		player.CameraMaxZoomDistance = S.thirdPersonDist
+		player.CameraMinZoomDistance = S.thirdPersonDist
+	else
+		player.CameraMaxZoomDistance = 400
+		player.CameraMinZoomDistance = 0.5
+	end
+	
+	-- Time of Day
+	if S.timeOfDay == "Dia" then Lighting.ClockTime = 14 elseif S.timeOfDay == "Noite" then Lighting.ClockTime = 0 end
 	
 	if S.fly and S.flyBV and S.flyBG and rp then
 		local dir = Vector3.zero
@@ -337,21 +507,45 @@ RunService.Heartbeat:Connect(function()
 		if S.vFlyBV then S.vFlyBV:Destroy(); S.vFlyBV = nil end
 		if S.vFlyBG then S.vFlyBG:Destroy(); S.vFlyBG = nil end
 	end
-	if S.aimbot and rp and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then
+	if S.aimbot or S.silentAim then
 		local best, bd = nil, S.aimbotFOV
+		local bestSP = nil
+		local mLoc = UIS:GetMouseLocation()
 		for _, p in ipairs(Players:GetPlayers()) do
 			if isValidTarget(p) and p.Character then
 				local part = p.Character:FindFirstChild(S.aimbotPart)
 				if part and p.Character:FindFirstChildOfClass("Humanoid") and p.Character:FindFirstChildOfClass("Humanoid").Health > 0 then
-					local sp, onScreen = camera:WorldToScreenPoint(part.Position)
+					local sp, onScreen = camera:WorldToViewportPoint(part.Position)
 					if onScreen then
-						local d = (Vector2.new(sp.X, sp.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
-						if d < bd then bd = d; best = part end
+						local d = (Vector2.new(sp.X, sp.Y) - mLoc).Magnitude
+						if d < bd then bd = d; best = part; bestSP = sp end
 					end
 				end
 			end
 		end
-		if best then camera.CFrame = camera.CFrame:Lerp(CFrame.new(camera.CFrame.Position, best.Position), S.aimbotSmooth / 100) end
+		
+		S.aimbotTarget = best -- Atualiza o alvo global para o Silent Aim
+		if S.aimbot and best and bestSP and UIS:IsMouseButtonPressed(Enum.UserInputType.MouseButton2) then 
+			if S.aimbotMethod == "Mouse" and mousemoverel then
+				local smoothFactor = math.max(1, S.aimbotSmooth / 2)
+				local moveX = (bestSP.X - mLoc.X) / smoothFactor
+				local moveY = (bestSP.Y - mLoc.Y) / smoothFactor
+				mousemoverel(moveX, moveY)
+			else
+				camera.CFrame = camera.CFrame:Lerp(CFrame.new(camera.CFrame.Position, best.Position), S.aimbotSmooth / 100) 
+			end
+		end
+		
+		-- Triggerbot
+		if S.triggerbot and best and bestSP then
+			local dMouse = (Vector2.new(bestSP.X, bestSP.Y) - mLoc).Magnitude
+			if dMouse < 25 then
+				task.wait(S.triggerDelay / 1000)
+				mouse1click()
+			end
+		end
+	else
+		S.aimbotTarget = nil
 	end
 	if S.fovCircle and S.fovCircleObj then 
 		local mLoc = UIS:GetMouseLocation()
@@ -370,11 +564,17 @@ end)
 -- ╚══════════════════════════════════════════════════════════════╝
 createCycleButton(sAttack, "Target Selection", {"Todos", "Somente Inimigos"}, "Todos", function(v) S.targetTeam = v; refreshHighlightESP() end)
 createCycleButton(sAttack, "Aimbot Part", {"Head", "HumanoidRootPart"}, "Head", function(v) S.aimbotPart = v end)
+createCycleButton(sAttack, "Aimbot Method", {"Camera", "Mouse"}, "Camera", function(v) S.aimbotMethod = v end)
 createCheckbox(sAttack, "Aimbot", false, function(v) S.aimbot = v end)
+createCheckbox(sAttack, "Silent Aim (Magic Bullet)", false, function(v) S.silentAim = v end)
 createSlider(sAttack, "Aimbot FOV Range", 50, 500, 120, function(v) S.aimbotFOV = v; if S.fovCircleObj then S.fovCircleObj.Size = UDim2.new(0, v*2, 0, v*2) end end)
 createSlider(sAttack, "Aimbot Smoothness", 1, 20, 8, function(v) S.aimbotSmooth = v end)
+createCheckbox(sAttack, "Triggerbot", false, function(v) S.triggerbot = v end)
+createSlider(sAttack, "Triggerbot Delay (ms)", 0, 1000, 0, function(v) S.triggerDelay = v end)
 createCheckbox(sAttack, "Hitbox Expander", false, function(v) S.hitboxExpander = v end)
 createSlider(sAttack, "Hitbox Size", 2, 30, 10, function(v) S.hitboxSize = v end)
+createCheckbox(sAttack, "Anti-Aim (Jitter)", false, function(v) S.antiAim = v end)
+createCheckbox(sAttack, "Kill Aura (Melee Fling)", false, function(v) S.killAura = v end)
 createCheckbox(sWeapon, "Wallbang (Ignore Walls)", false, function(v) S.wallbang = v end)
 createCheckbox(sWeapon, "No Recoil", false, function(v) S.noRecoil = v end)
 createCheckbox(sWeapon, "No Spread", false, function(v) S.noSpread = v end)
@@ -390,6 +590,8 @@ createCycleButton(sVisual, "↳ Skeleton Color", colorNames, "White", function(v
 createCheckbox(sVisual, "ESP Name & HP", false, function(v) S.espName = v end)
 createCycleButton(sVisual, "↳ Name & HP Color", colorNames, "White", function(v) S.espNameColor = v end)
 createCheckbox(sVisual, "Player ESP Highlight", false, function(v) S.espHighlight = v; refreshHighlightESP() end)
+createCheckbox(sVisual, "Chams (Material Hack)", false, function(v) S.chams = v; for _, p in ipairs(Players:GetPlayers()) do if isValidTarget(p) then applyChams(p.Character, v) end end end)
+createCycleButton(sVisual, "↳ Chams Color", colorNames, "Red", function(v) S.chamsColor = v; if S.chams then for _, p in ipairs(Players:GetPlayers()) do if isValidTarget(p) then applyChams(p.Character, true) end end end end)
 createCheckbox(sVisual, "Draw FOV (Círculo)", false, function(v) 
 	S.fovCircle = v
 	if v and not S.fovCircleObj then
@@ -403,9 +605,15 @@ createCycleButton(sVisual, "↳ FOV Color", colorNames, "Cyan", function(v)
 	S.fovCircleColor = v
 	if S.fovCircleObj and S.fovCircleObj:FindFirstChild("Stroke") then S.fovCircleObj.Stroke.Color = colorMap[v] end
 end)
+createSlider(sVisual, "World FOV", 70, 120, 70, function(v) S.worldFOV = v end)
+createCycleButton(sVisual, "Time of Day", {"Normal", "Dia", "Noite"}, "Normal", function(v) S.timeOfDay = v end)
+createCheckbox(sVisual, "Third Person Mode", false, function(v) S.thirdPerson = v end)
+createSlider(sVisual, "↳ 3rd Person Distance", 5, 50, 10, function(v) S.thirdPersonDist = v end)
 createCheckbox(sMisc, "Speed Hack", false, function(v) S.speed = v end)
 createSlider(sMisc, "Movement Speed", 16, 200, 50, function(v) S.speedVal = v end)
 createCheckbox(sMisc, "Super Jump", false, function(v) S.superJump = v end)
+createCheckbox(sMisc, "Auto Bunny Hop", false, function(v) S.autoBhop = v end)
+createCheckbox(sMisc, "Spider (Wallclimb)", false, function(v) S.spider = v end)
 createCheckbox(sMisc, "Noclip", false, function(v) S.noclip = v end)
 createCheckbox(sMisc, "Fly Mode", false, function(v) 
 	S.fly = v; local rp = getRoot()
@@ -421,6 +629,19 @@ createCheckbox(sMisc, "Vehicle Fly", false, function(v) S.vehicleFly = v end)
 createCheckbox(sMisc, "Spinbot", false, function(v) S.spinbot = v end)
 createSlider(sMisc, "Spinbot Speed", 10, 100, 30, function(v) S.spinbotSpeed = v end)
 createCheckbox(sMisc, "God Mode", false, function(v) S.godMode = v end)
+createCheckbox(sMisc, "Anti-AFK", false, function(v) S.antiAfk = v end)
+createButton(sMisc, "Teleport to Aim Target", function()
+	local rp = getRoot()
+	if rp and S.aimbotTarget and S.aimbotTarget.Parent then
+		local targetHrp = S.aimbotTarget.Parent:FindFirstChild("HumanoidRootPart")
+		if targetHrp then
+			rp.CFrame = targetHrp.CFrame * CFrame.new(0, 0, 4)
+			notify("Teleport", "Teleportado para as costas de " .. S.aimbotTarget.Parent.Name, 2)
+		end
+	else
+		notify("Erro", "Nenhum alvo na mira do Aimbot/Silent Aim", 2)
+	end
+end)
 createCheckbox(sSettings, "Stealth Mode (Ocultar Logs)", false, setStealth)
 createCheckbox(sSettings, "Ativar Botão Mobile", true, function(v) S.mobileBtn = v end)
 -- ╔══════════════════════════════════════════════════════════════╗
@@ -439,4 +660,14 @@ UIS.InputChanged:Connect(function(i)
 	end
 end)
 UIS.InputBegan:Connect(function(i, p) if not p and i.KeyCode == Enum.KeyCode.Insert then main.Visible = not main.Visible end end)
-print("[Magnata Menu Remastered V7] ✅ Carregado com Hitbox, Spinbot e Wallbang!")
+local vu = game:GetService("VirtualUser")
+player.Idled:Connect(function()
+	if S.antiAfk then
+		vu:Button2Down(Vector2.new(0,0), camera.CFrame)
+		task.wait(1)
+		vu:Button2Up(Vector2.new(0,0), camera.CFrame)
+		notify("Anti-AFK", "Conexão mantida (Evitou kick por inatividade).", 3)
+	end
+end)
+print("[Magnata Menu Remastered V8 ULTIMATE] ✅ Carregado com Sucesso!")
+notify("Ghost Menu Injetado", "V8 ULTIMATE carregada com sucesso. Pressione Insert para abrir/fechar.", 5)

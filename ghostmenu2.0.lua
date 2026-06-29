@@ -18,8 +18,24 @@ local mouse = player:GetMouse()
 -- ╔══════════════════════════════════════════════════════════════╗
 -- ║               SISTEMA DE BYPASS E STEALTH                    ║
 -- ╚══════════════════════════════════════════════════════════════╝
+-- Bypass simples: só bloqueia RemoteEvent e RemoteFunction
+-- Ativar bypass por padrão: não enviar RemoteEvent ao servidor ao executar o script
 local BypassEnabled = true
+-- Bypass modes:
+-- "block_all" = bloqueia todo FireServer/Invoke
+-- "allow_whitelist" = bloqueia exceto remotes na whitelist
+-- "passthrough" = não bloqueia (apenas loga quando desativado)
 local BypassMode = "block_all" 
+-- tabelas configuráveis
+local bypassWhitelist = {} -- keys: Instance (RemoteEvent/RemoteFunction) -> true
+local bypassBlacklist = {} -- keys: Instance -> true
+local lastBlocked = {}
+local function remoteId(remote)
+    if not remote or not remote:IsA("Instance") then return "<unknown>" end
+    local ok, name = pcall(function() return tostring(remote:GetFullName()) end)
+    if ok and name then return name end
+    return (remote.Name or "<unnamed>")
+end
 local oldNamecall
 oldNamecall = hookmetamethod and hookmetamethod(game, "__namecall", function(self, ...)
 	local method = getnamecallmethod()
@@ -51,9 +67,17 @@ oldNamecall = hookmetamethod and hookmetamethod(game, "__namecall", function(sel
 			end
 		end
 	end
-	-- Bypass Padrão
+	-- Bypass Padrão Original (Com suporte a Whitelist/Blacklist)
 	if BypassEnabled and not checkcaller() and (method == "FireServer" or method == "InvokeServer") then
-		if BypassMode == "block_all" then return nil end
+		if BypassMode == "block_all" then
+			lastBlocked[remoteId(self)] = true
+			return nil
+		elseif BypassMode == "allow_whitelist" then
+			if not bypassWhitelist[self] then
+				lastBlocked[remoteId(self)] = true
+				return nil
+			end
+		end
 	end
 	return oldNamecall(self, unpack(args))
 end) or function() end

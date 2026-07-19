@@ -1,1 +1,628 @@
+-- ============================================
+-- AutoClicker ULTRA RÁPIDO para Roblox
+-- Funciona com executors (Synapse, KRNL, etc.)
+-- ============================================
+
+-- CONFIGURAÇÕES
+local Config = {
+    Interval = 0.0001,      -- Intervalo mínimo (LOUCO)
+    ClickType = "left",    -- "left", "right", ou "middle"
+    ToggleKey = "F6",      -- Tecla para ligar/desligar
+    AutoClick = false,     -- Estado inicial
+    HoldMode = false,      -- true = segurar para clicar, false = toggle
+    ClicksPerFrame = 50,   -- Cliques por frame (LOUCO)
+    SpeedMode = "louco",   -- "normal", "rapido", "ultra", "turbo", "louco"
+    MultiThread = true,    -- Múltiplas threads de clique
+    ThreadCount = 20,      -- Máximo de threads
+}
+
+-- VELOCIDADES PREDEFINIDAS
+local SpeedPresets = {
+    normal  = { interval = 0.05,  cps = 20,    clicks = 2 },
+    rapido  = { interval = 0.01,  cps = 100,   clicks = 5 },
+    ultra   = { interval = 0.005, cps = 200,   clicks = 10 },
+    turbo   = { interval = 0.001, cps = 500,   clicks = 30 },
+    louco   = { interval = 0.0001, cps = 1000, clicks = 50 },
+}
+
+-- SERVIÇES
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local Mouse = Players.LocalPlayer:GetMouse()
+
+-- GUI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "AutoClickerGUI"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+
+if game:GetService("CoreGui"):FindFirstChild("AutoClickerGUI") then
+    game:GetService("CoreGui"):FindFirstChild("AutoClickerGUI"):Destroy()
+end
+ScreenGui.Parent = game:GetService("CoreGui")
+
+-- FRAME PRINCIPAL
+local MainFrame = Instance.new("Frame")
+MainFrame.Name = "MainFrame"
+MainFrame.Size = UDim2.new(0, 240, 0, 420)
+MainFrame.Position = UDim2.new(0.5, -120, 0.5, -210)
+MainFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+MainFrame.BorderSizePixel = 0
+MainFrame.Active = true
+MainFrame.Draggable = true
+MainFrame.Parent = ScreenGui
+
+local MainCorner = Instance.new("UICorner")
+MainCorner.CornerRadius = UDim.new(0, 12)
+MainCorner.Parent = MainFrame
+
+-- TÍTULO
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, 0, 0, 40)
+Title.BackgroundColor3 = Color3.fromRGB(120, 50, 200)
+Title.BorderSizePixel = 0
+Title.Text = "TURBO CLICKER"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBlack
+Title.TextSize = 18
+Title.Parent = MainFrame
+
+local TitleCorner = Instance.new("UICorner")
+TitleCorner.CornerRadius = UDim.new(0, 12)
+TitleCorner.Parent = Title
+
+-- STATUS
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, -20, 0, 22)
+StatusLabel.Position = UDim2.new(0, 10, 0, 45)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "DESLIGADO"
+StatusLabel.TextColor3 = Color3.fromRGB(255, 85, 85)
+StatusLabel.Font = Enum.Font.GothamBlack
+StatusLabel.TextSize = 14
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = MainFrame
+
+-- CONTADOR
+local ClicksLabel = Instance.new("TextLabel")
+ClicksLabel.Size = UDim2.new(1, -20, 0, 20)
+ClicksLabel.Position = UDim2.new(0, 10, 0, 65)
+ClicksLabel.BackgroundTransparency = 1
+ClicksLabel.Text = "Cliques: 0 | 0 CPS"
+ClicksLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+ClicksLabel.Font = Enum.Font.GothamBold
+ClicksLabel.TextSize = 12
+ClicksLabel.TextXAlignment = Enum.TextXAlignment.Left
+ClicksLabel.Parent = MainFrame
+
+-- SELETOR DE VELOCIDADE
+local SpeedFrame = Instance.new("Frame")
+SpeedFrame.Size = UDim2.new(1, -20, 0, 80)
+SpeedFrame.Position = UDim2.new(0, 10, 0, 90)
+SpeedFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 45)
+SpeedFrame.BorderSizePixel = 0
+SpeedFrame.Parent = MainFrame
+
+local SpeedCorner = Instance.new("UICorner")
+SpeedCorner.CornerRadius = UDim.new(0, 8)
+SpeedCorner.Parent = SpeedFrame
+
+local SpeedTitle = Instance.new("TextLabel")
+SpeedTitle.Size = UDim2.new(1, -10, 0, 20)
+SpeedTitle.Position = UDim2.new(0, 10, 0, 3)
+SpeedTitle.BackgroundTransparency = 1
+SpeedTitle.Text = "MODO DE VELOCIDADE"
+SpeedTitle.TextColor3 = Color3.fromRGB(180, 150, 255)
+SpeedTitle.Font = Enum.Font.GothamBold
+SpeedTitle.TextSize = 10
+SpeedTitle.TextXAlignment = Enum.TextXAlignment.Left
+SpeedTitle.Parent = SpeedFrame
+
+local SpeedButtons = {}
+local SpeedNames = {"normal", "rapido", "ultra", "turbo", "louco"}
+local SpeedLabels = {"NORMAL", "RÁPIDO", "ULTRA", "TURBO", "LOUCO"}
+local SpeedColors = {
+    Color3.fromRGB(80, 180, 80),
+    Color3.fromRGB(80, 150, 255),
+    Color3.fromRGB(180, 100, 255),
+    Color3.fromRGB(255, 150, 0),
+    Color3.fromRGB(255, 50, 50),
+}
+
+for i, name in ipairs(SpeedNames) do
+    local row = math.ceil(i / 3)
+    local col = (i - 1) % 3
+
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.31, -4, 0, 26)
+    btn.Position = UDim2.new(0, 6 + col * (0.31 * 1 + 4/SpeedFrame.AbsoluteSize.X), 0, 22 + (row - 1) * 30)
+    btn.BackgroundColor3 = name == Config.SpeedMode and SpeedColors[i] or Color3.fromRGB(45, 45, 65)
+    btn.BorderSizePixel = 0
+    btn.Text = SpeedLabels[i]
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.Parent = SpeedFrame
+    SpeedButtons[name] = btn
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        Config.SpeedMode = name
+        local preset = SpeedPresets[name]
+        Config.Interval = preset.interval
+        Config.ClicksPerFrame = preset.clicks
+
+        for n, b in pairs(SpeedButtons) do
+            local idx = table.find(SpeedNames, n)
+            b.BackgroundColor3 = n == name and SpeedColors[idx] or Color3.fromRGB(45, 45, 65)
+        end
+    end)
+end
+
+-- CLIQUES POR FRAME
+local CPFFrame = Instance.new("Frame")
+CPFFrame.Size = UDim2.new(1, -20, 0, 25)
+CPFFrame.Position = UDim2.new(0, 10, 0, 180)
+CPFFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+CPFFrame.BorderSizePixel = 0
+CPFFrame.Parent = MainFrame
+
+local CPFCorner = Instance.new("UICorner")
+CPFCorner.CornerRadius = UDim.new(0, 6)
+CPFCorner.Parent = CPFFrame
+
+local CPFLabel = Instance.new("TextLabel")
+CPFLabel.Size = UDim2.new(0.55, 0, 1, 0)
+CPFLabel.BackgroundTransparency = 1
+CPFLabel.Text = " Clicks/Frame:"
+CPFLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+CPFLabel.Font = Enum.Font.Gotham
+CPFLabel.TextSize = 11
+CPFLabel.TextXAlignment = Enum.TextXAlignment.Left
+CPFLabel.Parent = CPFFrame
+
+local CPFInput = Instance.new("TextBox")
+CPFInput.Size = UDim2.new(0.35, 0, 0.8, 0)
+CPFInput.Position = UDim2.new(0.6, 0, 0.1, 0)
+CPFInput.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+CPFInput.BorderSizePixel = 0
+CPFInput.Text = tostring(Config.ClicksPerFrame)
+CPFInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+CPFInput.Font = Enum.Font.GothamBold
+CPFInput.TextSize = 12
+CPFInput.ClearTextOnFocus = false
+CPFInput.Parent = CPFFrame
+
+local CPFInputCorner = Instance.new("UICorner")
+CPFInputCorner.CornerRadius = UDim.new(0, 4)
+CPFInputCorner.Parent = CPFInput
+
+-- THREADS
+local ThreadFrame = Instance.new("Frame")
+ThreadFrame.Size = UDim2.new(1, -20, 0, 25)
+ThreadFrame.Position = UDim2.new(0, 10, 0, 210)
+ThreadFrame.BackgroundColor3 = Color3.fromRGB(35, 35, 50)
+ThreadFrame.BorderSizePixel = 0
+ThreadFrame.Parent = MainFrame
+
+local ThreadCorner = Instance.new("UICorner")
+ThreadCorner.CornerRadius = UDim.new(0, 6)
+ThreadCorner.Parent = ThreadFrame
+
+local ThreadLabel = Instance.new("TextLabel")
+ThreadLabel.Size = UDim2.new(0.55, 0, 1, 0)
+ThreadLabel.BackgroundTransparency = 1
+ThreadLabel.Text = " Threads:"
+ThreadLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+ThreadLabel.Font = Enum.Font.Gotham
+ThreadLabel.TextSize = 11
+ThreadLabel.TextXAlignment = Enum.TextXAlignment.Left
+ThreadLabel.Parent = ThreadFrame
+
+local ThreadInput = Instance.new("TextBox")
+ThreadInput.Size = UDim2.new(0.35, 0, 0.8, 0)
+ThreadInput.Position = UDim2.new(0.6, 0, 0.1, 0)
+ThreadInput.BackgroundColor3 = Color3.fromRGB(50, 50, 70)
+ThreadInput.BorderSizePixel = 0
+ThreadInput.Text = tostring(Config.ThreadCount)
+ThreadInput.TextColor3 = Color3.fromRGB(255, 255, 255)
+ThreadInput.Font = Enum.Font.GothamBold
+ThreadInput.TextSize = 12
+ThreadInput.ClearTextOnFocus = false
+ThreadInput.Parent = ThreadFrame
+
+local ThreadInputCorner = Instance.new("UICorner")
+ThreadInputCorner.CornerRadius = UDim.new(0, 4)
+ThreadInputCorner.Parent = ThreadInput
+
+-- MODO HOLD
+local HoldButton = Instance.new("TextButton")
+HoldButton.Size = UDim2.new(1, -20, 0, 25)
+HoldButton.Position = UDim2.new(0, 10, 0, 240)
+HoldButton.BackgroundColor3 = Color3.fromRGB(45, 45, 65)
+HoldButton.BorderSizePixel = 0
+HoldButton.Text = "  Modo Hold: OFF"
+HoldButton.TextColor3 = Color3.fromRGB(180, 180, 180)
+HoldButton.Font = Enum.Font.Gotham
+HoldButton.TextSize = 12
+HoldButton.TextXAlignment = Enum.TextXAlignment.Left
+HoldButton.Parent = MainFrame
+
+local HoldCorner = Instance.new("UICorner")
+HoldCorner.CornerRadius = UDim.new(0, 6)
+HoldCorner.Parent = HoldButton
+
+-- SELETOR DE TIPO
+local TypeFrame = Instance.new("Frame")
+TypeFrame.Size = UDim2.new(1, -20, 0, 25)
+TypeFrame.Position = UDim2.new(0, 10, 0, 270)
+TypeFrame.BackgroundTransparency = 1
+TypeFrame.Parent = MainFrame
+
+local TypeLabel = Instance.new("TextLabel")
+TypeLabel.Size = UDim2.new(0.3, 0, 1, 0)
+TypeLabel.BackgroundTransparency = 1
+TypeLabel.Text = "Tipo:"
+TypeLabel.TextColor3 = Color3.fromRGB(180, 180, 180)
+TypeLabel.Font = Enum.Font.Gotham
+TypeLabel.TextSize = 11
+TypeLabel.TextXAlignment = Enum.TextXAlignment.Left
+TypeLabel.Parent = TypeFrame
+
+local Types = {"left", "right", "middle"}
+local TypeButtons = {}
+
+for i, type in ipairs(Types) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(0.22, -3, 1, 0)
+    btn.Position = UDim2.new(0.3 + (i-1) * 0.23, 0, 0, 0)
+    btn.BackgroundColor3 = type == Config.ClickType and Color3.fromRGB(100, 65, 165) or Color3.fromRGB(45, 45, 65)
+    btn.BorderSizePixel = 0
+    btn.Text = type == "left" and "Esq" or type == "right" and "Dir" or "Meio"
+    btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    btn.Font = Enum.Font.GothamBold
+    btn.TextSize = 10
+    btn.Parent = TypeFrame
+    TypeButtons[type] = btn
+
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 6)
+    corner.Parent = btn
+
+    btn.MouseButton1Click:Connect(function()
+        Config.ClickType = type
+        for t, b in pairs(TypeButtons) do
+            b.BackgroundColor3 = t == type and Color3.fromRGB(100, 65, 165) or Color3.fromRGB(45, 45, 65)
+        end
+    end)
+end
+
+-- BOTÃO TOGGLE
+local ToggleButton = Instance.new("TextButton")
+ToggleButton.Size = UDim2.new(1, -20, 0, 38)
+ToggleButton.Position = UDim2.new(0, 10, 0, 305)
+ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+ToggleButton.BorderSizePixel = 0
+ToggleButton.Text = "▶ LIGAR (F6)"
+ToggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+ToggleButton.Font = Enum.Font.GothamBlack
+ToggleButton.TextSize = 16
+ToggleButton.Parent = MainFrame
+
+local ToggleCorner = Instance.new("UICorner")
+ToggleCorner.CornerRadius = UDim.new(0, 8)
+ToggleCorner.Parent = ToggleButton
+
+-- BOTÃO MINIMIZAR
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Size = UDim2.new(0, 28, 0, 28)
+MinimizeButton.Position = UDim2.new(1, -33, 0, 6)
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(255, 180, 50)
+MinimizeButton.BorderSizePixel = 0
+MinimizeButton.Text = "—"
+MinimizeButton.TextColor3 = Color3.fromRGB(0, 0, 0)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.TextSize = 16
+MinimizeButton.Parent = MainFrame
+
+local MinCorner = Instance.new("UICorner")
+MinCorner.CornerRadius = UDim.new(0, 8)
+MinCorner.Parent = MinimizeButton
+
+-- FRAME MINIMIZADO
+local MiniFrame = Instance.new("Frame")
+MiniFrame.Size = UDim2.new(0, 180, 0, 45)
+MiniFrame.Position = UDim2.new(0.5, -90, 0, 10)
+MiniFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 30)
+MiniFrame.BorderSizePixel = 0
+MiniFrame.Visible = false
+MiniFrame.Parent = ScreenGui
+
+local MiniCorner = Instance.new("UICorner")
+MiniCorner.CornerRadius = UDim.new(0, 12)
+MiniCorner.Parent = MiniFrame
+
+local MiniStatus = Instance.new("TextLabel")
+MiniStatus.Size = UDim2.new(0.6, 0, 1, 0)
+MiniStatus.BackgroundTransparency = 1
+MiniStatus.Text = "OFF"
+MiniStatus.TextColor3 = Color3.fromRGB(255, 85, 85)
+MiniStatus.Font = Enum.Font.GothamBlack
+MiniStatus.TextSize = 16
+MiniStatus.Parent = MiniFrame
+
+local MiniCPS = Instance.new("TextLabel")
+MiniCPS.Size = UDim2.new(0.6, 0, 0.4, 0)
+MiniCPS.Position = UDim2.new(0, 10, 0.6, 0)
+MiniCPS.BackgroundTransparency = 1
+MiniCPS.Text = "0 CPS"
+MiniCPS.TextColor3 = Color3.fromRGB(150, 150, 150)
+MiniCPS.Font = Enum.Font.Gotham
+MiniCPS.TextSize = 10
+MiniCPS.TextXAlignment = Enum.TextXAlignment.Left
+MiniCPS.Parent = MiniFrame
+
+local MiniToggle = Instance.new("TextButton")
+MiniToggle.Size = UDim2.new(0.3, -5, 0.65, 0)
+MiniToggle.Position = UDim2.new(0.65, 0, 0.175, 0)
+MiniToggle.BackgroundColor3 = Color3.fromRGB(120, 50, 200)
+MiniToggle.BorderSizePixel = 0
+MiniToggle.Text = "▶"
+MiniToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+MiniToggle.Font = Enum.Font.GothamBlack
+MiniToggle.TextSize = 18
+MiniToggle.Parent = MiniFrame
+
+local MiniTogCorner = Instance.new("UICorner")
+MiniTogCorner.CornerRadius = UDim.new(0, 8)
+MiniTogCorner.Parent = MiniToggle
+
+-- ============================================
+-- MOTOR DE CLIQUES ULTRA RÁPIDO
+-- ============================================
+local ClickCount = 0
+local Holding = false
+local ActiveThreads = 0
+local LastClickTime = tick()
+local ClicksInSecond = 0
+local DisplayCPS = 0
+
+local function GetClickButton()
+    return Config.ClickType == "left" and 0 or Config.ClickType == "right" and 1 or 2
+end
+
+-- Método 1: VirtualInputManager (mais rápido)
+local function FastClick_VIM()
+    local btn = GetClickButton()
+    VirtualInputManager:SendMouseButtonEvent(0, 0, btn, true, nil, 0)
+    VirtualInputManager:SendMouseButtonEvent(0, 0, btn, false, nil, 0)
+end
+
+-- Método 2: Mouse events diretos
+local function FastClick_Mouse()
+    local char = Players.LocalPlayer.Character
+    if char then
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hrp then
+            local mouse = Players.LocalPlayer:GetMouse()
+            if mouse.Target then
+                -- Click no alvo
+                local EV = game:GetService("VirtualInputManager")
+                local x, y = mouse.X, mouse.Y
+                EV:SendMouseButtonEvent(x, y, 0, true, nil, 0)
+                EV:SendMouseButtonEvent(x, y, 0, false, nil, 0)
+
+                -- ClickDetector
+                if mouse.Target:FindFirstChild("ClickDetector") then
+                    pcall(function() mouse.Target.ClickDetector:Fire() end)
+                end
+
+                -- .Click() se disponível
+                pcall(function() mouse.Target:Click() end)
+            end
+        end
+    end
+end
+
+-- Método 3: Múltiplos cliques instantâneos
+local function BurstClick(count)
+    local btn = GetClickButton()
+    for i = 1, count do
+        VirtualInputManager:SendMouseButtonEvent(0, 0, btn, true, nil, 0)
+        VirtualInputManager:SendMouseButtonEvent(0, 0, btn, false, nil, 0)
+    end
+end
+
+-- CLIQUE PRINCIPAL OTIMIZADO
+local function DoClick()
+    pcall(function()
+        local mode = Config.SpeedMode
+
+        if mode == "normal" or mode == "rapido" then
+            -- Modo normal: 1-2 cliques por chamada
+            FastClick_VIM()
+
+        elseif mode == "ultra" then
+            -- Modo ultra: burst de 5 cliques
+            BurstClick(Config.ClicksPerFrame)
+
+        elseif mode == "turbo" then
+            -- Modo turbo: burst de 10 + mouse
+            BurstClick(Config.ClicksPerFrame)
+            task.spawn(FastClick_Mouse)
+
+        elseif mode == "louco" then
+            -- Modo louco: máximo possível
+            BurstClick(Config.ClicksPerFrame)
+            task.spawn(FastClick_Mouse)
+            task.spawn(function()
+                BurstClick(math.floor(Config.ClicksPerFrame / 2))
+            end)
+        end
+    end)
+
+    ClickCount = ClickCount + 1
+    ClicksInSecond = ClicksInSecond + 1
+end
+
+-- Atualizar CPS display
+task.spawn(function()
+    while true do
+        DisplayCPS = ClicksInSecond
+        ClicksInSecond = 0
+
+        local display = "Cliques: " .. tostring(ClickCount) .. " | " .. tostring(DisplayCPS) .. " CPS"
+        pcall(function()
+            ClicksLabel.Text = display
+            MiniCPS.Text = tostring(DisplayCPS) .. " CPS"
+        end)
+
+        task.wait(1)
+    end
+end)
+
+-- LOOP PRINCIPAL (thread única base)
+task.spawn(function()
+    while true do
+        if Config.AutoClick and (not Config.HoldMode or Holding) then
+            DoClick()
+            task.wait(Config.Interval)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+-- THREADS EXTRAS (modo turbo/louco)
+task.spawn(function()
+    while true do
+        if Config.AutoClick and Config.MultiThread and (Config.SpeedMode == "turbo" or Config.SpeedMode == "louco") then
+            for i = 1, Config.ThreadCount do
+                task.spawn(function()
+                    if Config.AutoClick then
+                        DoClick()
+                    end
+                end)
+            end
+            task.wait(Config.Interval * 0.5)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+-- TOGGLE
+local function ToggleClicker()
+    Config.AutoClick = not Config.AutoClick
+
+    if Config.AutoClick then
+        StatusLabel.Text = "LIGADO - " .. Config.SpeedMode:upper()
+        StatusLabel.TextColor3 = Color3.fromRGB(85, 255, 85)
+        ToggleButton.Text = "■ PARAR (F6)"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(85, 255, 85)
+        MiniStatus.Text = "ON"
+        MiniStatus.TextColor3 = Color3.fromRGB(85, 255, 85)
+        MiniToggle.Text = "■"
+    else
+        StatusLabel.Text = "DESLIGADO"
+        StatusLabel.TextColor3 = Color3.fromRGB(255, 85, 85)
+        ToggleButton.Text = "▶ LIGAR (F6)"
+        ToggleButton.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
+        MiniStatus.Text = "OFF"
+        MiniStatus.TextColor3 = Color3.fromRGB(255, 85, 85)
+        MiniToggle.Text = "▶"
+    end
+end
+
+-- INPUT
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if input.KeyCode == Enum.KeyCode[Config.ToggleKey] then
+        ToggleClicker()
+    end
+    if Config.HoldMode and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        Holding = true
+        if not Config.AutoClick then ToggleClicker() end
+    end
+end)
+
+UserInputService.InputEnded:Connect(function(input)
+    if Config.HoldMode and input.UserInputType == Enum.UserInputType.MouseButton1 then
+        Holding = false
+        if Config.AutoClick then ToggleClicker() end
+    end
+end)
+
+-- BOTÕES
+ToggleButton.MouseButton1Click:Connect(ToggleClicker)
+MiniToggle.MouseButton1Click:Connect(ToggleClicker)
+
+-- MINIMIZAR
+local isMinimized = false
+MinimizeButton.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    MainFrame.Visible = not isMinimized
+    MiniFrame.Visible = isMinimized
+end)
+
+-- CPF INPUT
+CPFInput.FocusLost:Connect(function()
+    local val = tonumber(CPFInput.Text)
+    if val and val >= 1 and val <= 100 then
+        Config.ClicksPerFrame = math.floor(val)
+        CPFInput.Text = tostring(Config.ClicksPerFrame)
+    else
+        CPFInput.Text = tostring(Config.ClicksPerFrame)
+    end
+end)
+
+-- THREAD INPUT
+ThreadInput.FocusLost:Connect(function()
+    local val = tonumber(ThreadInput.Text)
+    if val and val >= 1 and val <= 20 then
+        Config.ThreadCount = math.floor(val)
+        ThreadInput.Text = tostring(Config.ThreadCount)
+    else
+        ThreadInput.Text = tostring(Config.ThreadCount)
+    end
+end)
+
+-- HOLD
+HoldButton.MouseButton1Click:Connect(function()
+    Config.HoldMode = not Config.HoldMode
+    HoldButton.Text = Config.HoldMode and "  Modo Hold: ON" or "  Modo Hold: OFF"
+end)
+
+-- DRAG mini
+local dragging, dragInput, dragStart, startPos
+MiniFrame.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MiniFrame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+end)
+MiniFrame.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement then dragInput = input end
+end)
+UserInputService.InputChanged:Connect(function(input)
+    if input == dragInput and dragging then
+        local delta = input.Position - dragStart
+        MiniFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+print("========================================")
+print("  TURBO CLICKER carregado!")
+print("  F6 = Ligar/Desligar")
+print("  Modos: Normal → Rápido → Ultra → Turbo → LOUCO")
+print("========================================")
 
